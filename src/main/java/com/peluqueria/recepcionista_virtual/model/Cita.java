@@ -45,10 +45,5 @@ public class Cita {
     private LocalDateTime fechaCreacion = LocalDateTime.now();
 }
 
-public enum EstadoCita {
-    PENDIENTE, CONFIRMADA, EN_PROGRESO, COMPLETADA, CANCELADA, NO_ASISTIO
-}
 
-public enum OrigenCita {
-    TELEFONO, WEB, MANUAL, WALKIN
-}
+
