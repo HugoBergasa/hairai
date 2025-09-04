@@ -3,10 +3,8 @@ package com.peluqueria.recepcionista_virtual.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,20 +13,11 @@ import java.util.function.Function;
 @Component
 public class JwtTokenUtil {
 
-    @Value("${spring.security.jwt.secret:default-secret-key-change-this-in-production}")
+    @Value("${spring.security.jwt.secret:mi-clave-secreta-super-segura-cambiar-esto}")
     private String secret;
 
     @Value("${spring.security.jwt.expiration:86400000}")
     private Long expiration;
-
-    private Key getSigningKey() {
-        // Asegurar que la clave tenga al menos 256 bits
-        if (secret.length() < 32) {
-            secret = secret + "0".repeat(32 - secret.length());
-        }
-        byte[] keyBytes = secret.getBytes();
-        return Keys.hmacShaKeyFor(keyBytes);
-    }
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -44,9 +33,8 @@ public class JwtTokenUtil {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
-                .build()
+        return Jwts.parser()
+                .setSigningKey(secret)
                 .parseClaimsJws(token)
                 .getBody();
     }
@@ -57,8 +45,8 @@ public class JwtTokenUtil {
 
     public String generateToken(String username, String tenantId, String role) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("tenantId", tenantId);
-        claims.put("role", role);
+        if (tenantId != null) claims.put("tenantId", tenantId);
+        if (role != null) claims.put("role", role);
         return createToken(claims, username);
     }
 
@@ -68,17 +56,25 @@ public class JwtTokenUtil {
                 .setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .signWith(SignatureAlgorithm.HS512, secret)
                 .compact();
     }
 
     public Boolean validateToken(String token, String username) {
-        final String extractedUsername = extractUsername(token);
-        return (extractedUsername.equals(username) && !isTokenExpired(token));
+        try {
+            final String extractedUsername = extractUsername(token);
+            return (extractedUsername.equals(username) && !isTokenExpired(token));
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public String extractTenantId(String token) {
-        final Claims claims = extractAllClaims(token);
-        return (String) claims.get("tenantId");
+        try {
+            final Claims claims = extractAllClaims(token);
+            return (String) claims.get("tenantId");
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
