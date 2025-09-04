@@ -13,6 +13,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.cors.CorsConfigurationSource;
+import com.peluqueria.recepcionista_virtual.security.JwtAuthenticationEntryPoint;
+import com.peluqueria.recepcionista_virtual.security.JwtRequestFilter;
 
 @Configuration
 @EnableWebSecurity

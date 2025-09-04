@@ -15,13 +15,17 @@ import java.util.function.Function;
 @Component
 public class JwtTokenUtil {
 
-    @Value("${spring.security.jwt.secret}")
+    @Value("${spring.security.jwt.secret:default-secret-key-change-this-in-production}")
     private String secret;
 
-    @Value("${spring.security.jwt.expiration}")
+    @Value("${spring.security.jwt.expiration:86400000}")
     private Long expiration;
 
     private Key getSigningKey() {
+        // Asegurar que la clave tenga al menos 256 bits
+        if (secret.length() < 32) {
+            secret = secret + "0".repeat(32 - secret.length());
+        }
         byte[] keyBytes = secret.getBytes();
         return Keys.hmacShaKeyFor(keyBytes);
     }

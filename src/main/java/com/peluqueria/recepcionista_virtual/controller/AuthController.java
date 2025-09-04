@@ -1,6 +1,6 @@
 package com.peluqueria.recepcionista_virtual.controller;
 
-import com.peluqueria.dto.*;
+import com.peluqueria.recepcionista_virtual.dto.*;
 import com.peluqueria.recepcionista_virtual.model.*;
 import com.peluqueria.recepcionista_virtual.security.JwtTokenUtil;
 import com.peluqueria.recepcionista_virtual.service.*;

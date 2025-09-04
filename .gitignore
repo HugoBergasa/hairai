@@ -1,34 +1,10 @@
-# Java
-target/
-*.jar
-*.war
-*.class
-.idea/
-*.iml
-.classpath
-.project
-.settings/
-
-# Frontend
-recepcionista-virtual-frontend/node_modules/
-recepcionista-virtual-frontend/build/
-recepcionista-virtual-frontend/.env.local
-recepcionista-virtual-frontend/.env.development.local
-recepcionista-virtual-frontend/.env.test.local
-recepcionista-virtual-frontend/.env.production.local
-recepcionista-virtual-frontend/npm-debug.log*
-
-# Logs
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-*.swp
-*.swo
-
-# Environment
-.env
+target/ 
+.idea/ 
+*.iml 
+.classpath 
+.project 
+.settings/ 
+*.log 
+.env 
+.DS_Store 
+Thumbs.db 

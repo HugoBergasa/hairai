@@ -1,1 +1,1 @@
-web: java -jar target/recepcionista-virtual-1.0.0.jar
+web: java -Dserver.port=$PORT -jar target/*.jar 
