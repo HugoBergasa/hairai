@@ -1,0 +1,32 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+
+  security:
+    jwt:
+      secret: ${JWT_SECRET:tu-secret-key-super-segura-cambiar}
+      expiration: 86400000
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID}
+  auth-token: ${TWILIO_AUTH_TOKEN}
+  phone-number: ${TWILIO_PHONE_NUMBER}
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4-turbo-preview
+
+cors:
+  allowed-origins: ${CORS_ORIGINS:http://localhost:3000}
