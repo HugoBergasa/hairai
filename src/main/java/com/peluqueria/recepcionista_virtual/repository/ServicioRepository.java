@@ -43,4 +43,9 @@ public interface ServicioRepository extends JpaRepository<Servicio, Long> {
      */
     @Query("SELECT COUNT(s) FROM Servicio s WHERE s.tenant.id = :tenantId AND s.activo = true")
     Long countActivosByTenantId(@Param("tenantId") String tenantId);
+
+    @Query("SELECT s FROM Servicio s WHERE LOWER(s.nombre) LIKE LOWER(CONCAT('%', :nombre, '%')) AND s.tenant.id = :tenantId")
+    List<Servicio> findByNombreContainingIgnoreCaseAndTenantId(String nombre, String tenantId);
+
+
 }

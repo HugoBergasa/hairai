@@ -8,65 +8,36 @@ spring:
     hikari:
       maximum-pool-size: 3
       minimum-idle: 1
-      connection-timeout: 60000  # 60 segundos
-      idle-timeout: 300000
-      max-lifetime: 600000  # 10 minutos
-      leak-detection-threshold: 60000
-      connection-test-query: SELECT 1
-      # Cache Configuration
-      spring:
-        cache:
-          type: simple
-          cache-names: tenantConfig
+      connection-timeout: 60000
 
   jpa:
     hibernate:
-      ddl-auto: update  # Mantenemos UPDATE
+      ddl-auto: update
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        jdbc:
-          lob:
-            non_contextual_creation: true
-        connection:
-          provider_disables_autocommit: true
-        # CRÍTICO: Evita que Hibernate mantenga conexiones abiertas mucho tiempo
-        c3p0:
-          idle_test_period: 30
-        # Reduce el trabajo de metadata
-        temp:
-          use_jdbc_metadata_defaults: false
-        # Importante para AWS RDS
-        schema_update:
-          unique_constraint_strategy: RECREATE_QUIETLY
     show-sql: false
-    open-in-view: false  # Importante para no mantener conexiones abiertas
 
-    # OpenAI Configuration
-    openai:
-      api:
-        key: ${OPENAI_API_KEY}
-        url: https://api.openai.com/v1/chat/completions
-        timeout: 30000
+  jackson:
+    time-zone: Europe/Madrid
 
-    # Default Tenant Configuration
-    default:
-      tenant:
-        id: ${DEFAULT_TENANT_ID:tenant_demo_001}
+# OpenAI
+openai:
+  api:
+    key: ${OPENAI_API_KEY}
+    url: https://api.openai.com/v1/chat/completions
 
+# Twilio
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID}
+  auth-token: ${TWILIO_AUTH_TOKEN}
+  phone-number: ${TWILIO_PHONE_NUMBER}
 
-    # Logging para debug (opcional)
-    logging:
-      level:
-        com.peluqueria.recepcionista_virtual.service: DEBUG
-        com.peluqueria.recepcionista_virtual.controller: DEBUG
+# Multi-tenant
+default:
+  tenant:
+    id: ${DEFAULT_TENANT_ID:tenant_demo_001}
 
-    # Jackson Configuration
-    spring:
-      jackson:
-        serialization:
-          write-dates-as-timestamps: false
-        deserialization:
-          fail-on-unknown-properties: false
-        time-zone: Europe/Madrid
-
+logging:
+  level:
+    com.peluqueria: DEBUG

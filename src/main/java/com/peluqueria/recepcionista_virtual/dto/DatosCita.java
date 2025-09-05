@@ -230,4 +230,11 @@ public class DatosCita implements Serializable {
                 ", telefono='" + telefono + '\'' +
                 '}';
     }
+
+    public boolean isCompleto() {
+        // Verificar que al menos tenga servicio, fecha y hora
+        return servicio != null && !servicio.isEmpty() &&
+                fecha != null && !fecha.isEmpty() &&
+                hora != null && !hora.isEmpty();
+    }
 }
