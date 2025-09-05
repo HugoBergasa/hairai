@@ -64,11 +64,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 username = jwtTokenUtil.extractUsername(jwtToken);
                 tenantId = jwtTokenUtil.extractTenantId(jwtToken);
 
-                // MULTI-TENANT: Siempre agregar tenantId al request
-                if (tenantId != null) {
-                    request.setAttribute("tenantId", tenantId);
-                    logger.debug("TenantId extraído del JWT: {}", tenantId);
-                }
+                logger.debug("TenantId extraído del JWT: {}", tenantId);
 
             } catch (Exception e) {
                 logger.error("Error procesando JWT: ", e);
@@ -87,7 +83,21 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
 
-                logger.debug("Usuario autenticado: {} para tenant: {}", username, tenantId);
+                // CORRECCIÓN: Establecer tenantId DESPUÉS de validación exitosa
+                if (tenantId != null) {
+                    request.setAttribute("tenantId", tenantId);
+                    logger.debug("Usuario autenticado: {} para tenant: {} - tenantId establecido en request", username, tenantId);
+                } else {
+                    logger.warn("Usuario autenticado pero tenantId es null: {}", username);
+                }
+            } else {
+                logger.warn("Token inválido para usuario: {}", username);
+            }
+        } else {
+            // IMPORTANTE: También establecer tenantId para rutas que no requieren autenticación completa
+            if (tenantId != null) {
+                request.setAttribute("tenantId", tenantId);
+                logger.debug("TenantId establecido en request sin autenticación completa: {}", tenantId);
             }
         }
 
