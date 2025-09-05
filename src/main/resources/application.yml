@@ -13,6 +13,11 @@ spring:
       max-lifetime: 600000  # 10 minutos
       leak-detection-threshold: 60000
       connection-test-query: SELECT 1
+      # Cache Configuration
+      spring:
+        cache:
+          type: simple
+          cache-names: tenantConfig
 
   jpa:
     hibernate:
@@ -36,4 +41,32 @@ spring:
           unique_constraint_strategy: RECREATE_QUIETLY
     show-sql: false
     open-in-view: false  # Importante para no mantener conexiones abiertas
+
+    # OpenAI Configuration
+    openai:
+      api:
+        key: ${OPENAI_API_KEY}
+        url: https://api.openai.com/v1/chat/completions
+        timeout: 30000
+
+    # Default Tenant Configuration
+    default:
+      tenant:
+        id: ${DEFAULT_TENANT_ID:tenant_demo_001}
+
+
+    # Logging para debug (opcional)
+    logging:
+      level:
+        com.peluqueria.recepcionista_virtual.service: DEBUG
+        com.peluqueria.recepcionista_virtual.controller: DEBUG
+
+    # Jackson Configuration
+    spring:
+      jackson:
+        serialization:
+          write-dates-as-timestamps: false
+        deserialization:
+          fail-on-unknown-properties: false
+        time-zone: Europe/Madrid
 
