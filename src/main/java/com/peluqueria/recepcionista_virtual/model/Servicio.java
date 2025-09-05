@@ -11,16 +11,13 @@ public class Servicio {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
-
     @Column(nullable = false)
     private String nombre;
 
     private String descripcion;
 
-    @Column(nullable = false)
-    private Integer duracion; // en minutos
+    @Column(name = "duracion", nullable = false)
+    private Integer duracionMinutos; // Cambiado el nombre del campo para compatibilidad
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal precio;
@@ -28,9 +25,22 @@ public class Servicio {
     @Column(nullable = false)
     private Boolean activo = true;
 
+    // Relación con Tenant (ManyToOne)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id", referencedColumnName = "id")
+    private Tenant tenant;
+
     // Constructor vacío
     public Servicio() {
         this.activo = true;
+    }
+
+    // Constructor con parámetros básicos
+    public Servicio(String nombre, Integer duracionMinutos, BigDecimal precio) {
+        this();
+        this.nombre = nombre;
+        this.duracionMinutos = duracionMinutos;
+        this.precio = precio;
     }
 
     // Getters y Setters
@@ -40,14 +50,6 @@ public class Servicio {
 
     public void setId(Long id) {
         this.id = id;
-    }
-
-    public String getTenantId() {
-        return tenantId;
-    }
-
-    public void setTenantId(String tenantId) {
-        this.tenantId = tenantId;
     }
 
     public String getNombre() {
@@ -66,12 +68,22 @@ public class Servicio {
         this.descripcion = descripcion;
     }
 
+    // Método principal para duracion (compatible con TenantService)
+    public Integer getDuracionMinutos() {
+        return duracionMinutos;
+    }
+
+    public void setDuracionMinutos(Integer duracionMinutos) {
+        this.duracionMinutos = duracionMinutos;
+    }
+
+    // Método alternativo para compatibilidad con la BD (columna "duracion")
     public Integer getDuracion() {
-        return duracion;
+        return duracionMinutos;
     }
 
     public void setDuracion(Integer duracion) {
-        this.duracion = duracion;
+        this.duracionMinutos = duracion;
     }
 
     public BigDecimal getPrecio() {
@@ -88,5 +100,30 @@ public class Servicio {
 
     public void setActivo(Boolean activo) {
         this.activo = activo;
+    }
+
+    // Getter y Setter para Tenant
+    public Tenant getTenant() {
+        return tenant;
+    }
+
+    public void setTenant(Tenant tenant) {
+        this.tenant = tenant;
+    }
+
+    // Método helper para obtener el tenantId directamente
+    public String getTenantId() {
+        return tenant != null ? tenant.getId() : null;
+    }
+
+    @Override
+    public String toString() {
+        return "Servicio{" +
+                "id=" + id +
+                ", nombre='" + nombre + '\'' +
+                ", duracionMinutos=" + duracionMinutos +
+                ", precio=" + precio +
+                ", activo=" + activo +
+                '}';
     }
 }
