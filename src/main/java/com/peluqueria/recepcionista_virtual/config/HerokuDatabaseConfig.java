@@ -1,11 +1,11 @@
 package com.peluqueria.recepcionista_virtual.config;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
 import java.net.URI;
@@ -14,14 +14,17 @@ import java.net.URISyntaxException;
 @Configuration
 public class HerokuDatabaseConfig {
 
-    @Value("${DATABASE_URL:}")
-    private String databaseUrl;
-
     @Bean
-    @ConditionalOnProperty(name = "DATABASE_URL")
-    public DataSource dataSource() throws URISyntaxException {
-        if (databaseUrl.isEmpty()) {
-            return null;
+    @Primary
+    public DataSource dataSource(Environment env) throws URISyntaxException {
+        String databaseUrl = env.getProperty("DATABASE_URL");
+
+        if (databaseUrl == null || databaseUrl.isEmpty()) {
+            databaseUrl = System.getenv("DATABASE_URL");
+        }
+
+        if (databaseUrl == null || databaseUrl.isEmpty()) {
+            throw new RuntimeException("DATABASE_URL not configured");
         }
 
         URI dbUri = new URI(databaseUrl);
@@ -29,21 +32,36 @@ public class HerokuDatabaseConfig {
         String username = dbUri.getUserInfo().split(":")[0];
         String password = dbUri.getUserInfo().split(":")[1];
         String dbUrl = "jdbc:postgresql://" + dbUri.getHost() + ':'
-                + dbUri.getPort() + dbUri.getPath();
+                + dbUri.getPort() + dbUri.getPath()
+                + "?sslmode=require&tcpKeepAlive=true&socketTimeout=30";
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(dbUrl);
         config.setUsername(username);
         config.setPassword(password);
         config.setDriverClassName("org.postgresql.Driver");
-        config.setMaximumPoolSize(5);
-        config.setConnectionTimeout(30000);
-        config.setIdleTimeout(600000);
-        config.setMaxLifetime(1800000);
 
-        // Importante para Heroku
-        config.addDataSourceProperty("ssl", "true");
-        config.addDataSourceProperty("sslfactory", "org.postgresql.ssl.NonValidatingFactory");
+        // Configuración para AWS RDS con migraciones
+        config.setMaximumPoolSize(3);
+        config.setMinimumIdle(1);
+        config.setConnectionTimeout(60000);
+        config.setIdleTimeout(300000);
+        config.setMaxLifetime(600000);
+        config.setLeakDetectionThreshold(60000);
+        config.setConnectionTestQuery("SELECT 1");
+        config.setValidationTimeout(5000);
+
+        // MUY IMPORTANTE para AWS RDS
+        config.addDataSourceProperty("socketTimeout", "30");
+        config.addDataSourceProperty("loginTimeout", "30");
+        config.addDataSourceProperty("connectTimeout", "30");
+        config.addDataSourceProperty("cancelSignalTimeout", "10");
+        config.addDataSourceProperty("tcpKeepAlive", "true");
+
+        // Para prevenir el cierre durante migraciones
+        config.addDataSourceProperty("autoReconnect", "true");
+        config.addDataSourceProperty("maxReconnects", "3");
+        config.addDataSourceProperty("initialTimeout", "2");
 
         return new HikariDataSource(config);
     }

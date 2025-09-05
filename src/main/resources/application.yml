@@ -3,38 +3,36 @@ server:
 
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL}}
-    username: ${SPRING_DATASOURCE_USERNAME:}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
+    url: ${DATABASE_URL}
     driver-class-name: org.postgresql.Driver
     hikari:
-      connection-timeout: 30000
-      maximum-pool-size: 10
+      maximum-pool-size: 3
+      minimum-idle: 1
+      connection-timeout: 60000  # 60 segundos
+      idle-timeout: 300000
+      max-lifetime: 600000  # 10 minutos
+      leak-detection-threshold: 60000
+      connection-test-query: SELECT 1
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: update  # Mantenemos UPDATE
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         jdbc:
           lob:
             non_contextual_creation: true
+        connection:
+          provider_disables_autocommit: true
+        # CRÍTICO: Evita que Hibernate mantenga conexiones abiertas mucho tiempo
+        c3p0:
+          idle_test_period: 30
+        # Reduce el trabajo de metadata
+        temp:
+          use_jdbc_metadata_defaults: false
+        # Importante para AWS RDS
+        schema_update:
+          unique_constraint_strategy: RECREATE_QUIETLY
     show-sql: false
-
-  security:
-    jwt:
-      secret: ${JWT_SECRET}
-      expiration: 86400000
-
-twilio:
-  account-sid: ${TWILIO_ACCOUNT_SID}
-  auth-token: ${TWILIO_AUTH_TOKEN}
-  phone-number: ${TWILIO_PHONE_NUMBER}
-
-openai:
-  api-key: ${OPENAI_API_KEY}
-  model: gpt-4-turbo-preview
-
-cors:
-  allowed-origins: ${CORS_ORIGINS:http://localhost:3000}
+    open-in-view: false  # Importante para no mantener conexiones abiertas
