@@ -17,118 +17,69 @@ public class StatsController {
     @Autowired
     private StatsService statsService;
 
-    /**
-     * MULTI-TENANT: Obtener estadísticas generales - CORREGIDO
-     */
     @GetMapping
     public ResponseEntity<?> getStats(HttpServletRequest request) {
+
+        // LOGGING SÚPER AGRESIVO para diagnosticar
+        System.out.println("=================================================================");
+        System.out.println("STATS CONTROLLER - VERSIÓN SÚPER DEBUG - TIMESTAMP: " + System.currentTimeMillis());
+        System.out.println("Método getStats() INICIADO");
+        System.out.println("=================================================================");
+
         try {
-            // CORRECCIÓN: Extraer tenantId del request attribute (establecido por JWT Filter)
             String tenantId = (String) request.getAttribute("tenantId");
 
-            System.out.println("DEBUG StatsController.getStats - TenantId: " + tenantId);
+            System.out.println("DIAGNÓSTICO: TenantId extraído = " + tenantId);
+            System.out.println("DIAGNÓSTICO: TenantId es null = " + (tenantId == null));
 
             if (tenantId == null) {
-                System.out.println("WARN: TenantId es null en /api/stats - devolviendo stats por defecto");
-                // Devolver estadísticas por defecto en lugar de error
+                System.out.println("RAMA: TenantId es null - devolviendo stats por defecto");
                 Map<String, Object> defaultStats = createDefaultStats();
+                defaultStats.put("debug_info", "tenantId_was_null");
+                defaultStats.put("controller_version", "super_debug_v1");
+                System.out.println("RESPUESTA NULL: " + defaultStats);
                 return ResponseEntity.ok(defaultStats);
             }
 
-            // MULTI-TENANT: Obtener stats filtradas por tenantId
+            System.out.println("RAMA: TenantId válido - llamando a statsService");
             Map<String, Object> stats = statsService.getStatsByTenant(tenantId);
-            System.out.println("DEBUG: Stats obtenidas para tenant " + tenantId + " - citasHoy: " + stats.get("citasHoy"));
 
+            stats.put("debug_info", "success_with_tenant");
+            stats.put("controller_version", "super_debug_v1");
+            stats.put("debug_tenant_received", tenantId);
+
+            System.out.println("RESPUESTA ÉXITO: " + stats);
             return ResponseEntity.ok(stats);
 
         } catch (Exception e) {
-            System.err.println("ERROR en getStats: " + e.getMessage());
+            System.err.println("EXCEPCIÓN CAPTURADA EN STATS CONTROLLER:");
+            System.err.println("Mensaje: " + e.getMessage());
+            System.err.println("Clase: " + e.getClass().getName());
             e.printStackTrace();
 
-            // En caso de error, devolver estadísticas por defecto para no romper el frontend
-            Map<String, Object> defaultStats = createDefaultStats();
-            return ResponseEntity.ok(defaultStats);
+            Map<String, Object> errorStats = createDefaultStats();
+            errorStats.put("debug_info", "exception_caught");
+            errorStats.put("controller_version", "super_debug_v1");
+            errorStats.put("error_message", e.getMessage());
+            errorStats.put("error_class", e.getClass().getName());
+
+            return ResponseEntity.ok(errorStats);
+
+        } finally {
+            System.out.println("=================================================================");
+            System.out.println("STATS CONTROLLER - FINALIZANDO MÉTODO getStats()");
+            System.out.println("=================================================================");
         }
     }
 
-    /**
-     * NUEVO: Estadísticas extendidas para dashboard
-     */
-    @GetMapping("/dashboard")
-    public ResponseEntity<?> getDashboardStats(HttpServletRequest request) {
-        try {
-            // CORRECCIÓN: Extraer tenantId del request
-            String tenantId = (String) request.getAttribute("tenantId");
-
-            System.out.println("DEBUG StatsController.getDashboardStats - TenantId: " + tenantId);
-
-            if (tenantId == null) {
-                return ResponseEntity.ok(createDefaultDashboardStats());
-            }
-
-            // MULTI-TENANT: Stats extendidas para el dashboard
-            Map<String, Object> dashboardStats = statsService.getDashboardStats(tenantId);
-
-            return ResponseEntity.ok(dashboardStats);
-
-        } catch (Exception e) {
-            System.err.println("ERROR en getDashboardStats: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.ok(createDefaultDashboardStats());
-        }
-    }
-
-    /**
-     * NUEVO: Endpoint de prueba para verificar conectividad
-     */
-    @GetMapping("/health")
-    public ResponseEntity<?> healthCheck(HttpServletRequest request) {
-        try {
-            String tenantId = (String) request.getAttribute("tenantId");
-
-            Map<String, Object> health = new HashMap<>();
-            health.put("status", "OK");
-            health.put("timestamp", System.currentTimeMillis());
-            health.put("tenantId", tenantId);
-            health.put("service", "StatsController");
-
-            return ResponseEntity.ok(health);
-
-        } catch (Exception e) {
-            Map<String, Object> error = new HashMap<>();
-            error.put("status", "ERROR");
-            error.put("message", e.getMessage());
-            return ResponseEntity.internalServerError().body(error);
-        }
-    }
-
-    /**
-     * MÉTODOS AUXILIARES: Crear estadísticas por defecto
-     */
     private Map<String, Object> createDefaultStats() {
         Map<String, Object> defaultStats = new HashMap<>();
         defaultStats.put("citasHoy", 0);
         defaultStats.put("ingresosMes", 0);
         defaultStats.put("clientesNuevos", 0);
         defaultStats.put("tasaCancelacion", 0);
-        defaultStats.put("message", "No hay datos disponibles");
+        defaultStats.put("message", "Controller súper debug funcionando");
         defaultStats.put("timestamp", System.currentTimeMillis());
         return defaultStats;
-    }
-
-    private Map<String, Object> createDefaultDashboardStats() {
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("citasHoy", 0);
-        stats.put("citasSemana", 0);
-        stats.put("citasMes", 0);
-        stats.put("ingresosDia", 0.0);
-        stats.put("ingresosSemana", 0.0);
-        stats.put("ingresosMes", 0.0);
-        stats.put("clientesNuevos", 0);
-        stats.put("llamadasTotal", 0);
-        stats.put("llamadasHoy", 0);
-        stats.put("message", "Dashboard sin datos");
-        stats.put("timestamp", System.currentTimeMillis());
-        return stats;
     }
 }
