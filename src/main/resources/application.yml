@@ -36,3 +36,47 @@ spring:
           unique_constraint_strategy: RECREATE_QUIETLY
     show-sql: false
     open-in-view: false  # Importante para no mantener conexiones abiertas
+
+    features:
+      compliance:
+        enabled: ${COMPLIANCE_ENABLED:false}  # Activar/desactivar RGPD
+        rgpd:
+          aviso-obligatorio: ${RGPD_AVISO:true}
+          retencion-dias: ${RGPD_RETENTION:30}
+          requiere-consentimiento: ${RGPD_CONSENT:true}
+
+      call-forwarding:
+        enabled: ${FORWARDING_ENABLED:false}  # Activar/desactivar desvíos
+        identify-by-forwarded: ${IDENTIFY_FORWARDED:true}
+        fallback-tenant: ${DEFAULT_TENANT:tenant_demo_001}
+
+      multi-number:
+        enabled: ${MULTI_NUMBER_ENABLED:false}  # Múltiples números por tenant
+        spanish-numbers: ${SPANISH_NUMBERS:true}
+
+      ai-enhanced:
+        compliance-prompts: ${AI_COMPLIANCE:true}  # GPT-4 genera avisos legales
+        personalized-greetings: ${AI_GREETINGS:true}
+
+    # Configuración Twilio España
+    twilio:
+      region: spain
+      voice:
+        language: es-ES
+        voice-type: Polly.Lucia  # Voz española femenina
+        backup-voice: Polly.Conchita
+      numbers:
+        country-code: "+34"
+
+    # Textos legales (personalizables por tenant)
+    legal:
+      default-rgpd-notice: |
+        Gracias por llamar. Le informamos que esta llamada puede ser grabada 
+        con fines de calidad del servicio. Si continúa, acepta estas condiciones.
+      short-notice: "Esta llamada puede ser grabada. ¿En qué puedo ayudarle?"
+
+    # Logging mejorado
+    logging:
+      level:
+        com.peluqueria.recepcionista_virtual.compliance: ${LOG_LEVEL_COMPLIANCE:INFO}
+        com.peluqueria.recepcionista_virtual.twilio: ${LOG_LEVEL_TWILIO:DEBUG}
