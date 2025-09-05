@@ -6,6 +6,7 @@ import com.peluqueria.recepcionista_virtual.security.JwtTokenUtil;
 import com.peluqueria.recepcionista_virtual.service.*;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -84,16 +85,23 @@ public class AuthController {
             // MULTI-TENANT: Crear o asignar tenant
             Tenant tenant;
             if (request.isNewTenant()) {
+                // NO USES tenantRepository - simplemente intenta crear
                 logger.info("Creando nuevo tenant: {}", request.getNombrePeluqueria());
                 tenant = new Tenant();
                 tenant.setNombrePeluqueria(request.getNombrePeluqueria());
                 tenant.setTelefono(request.getTelefono());
                 tenant.setDireccion(request.getDireccion());
-                tenant = tenantService.save(tenant);
 
-                // Crear servicios predeterminados para el tenant
-                tenantService.createDefaultServices(tenant.getId());
-                logger.info("Tenant creado con ID: {}", tenant.getId());
+                try {
+                    tenant = tenantService.save(tenant);
+                    tenantService.createDefaultServices(tenant.getId());
+                    logger.info("Tenant creado con ID: {}", tenant.getId());
+                } catch (DataIntegrityViolationException e) {
+                    // Si el nombre ya existe, capturarlo aquí
+                    logger.warn("Nombre de peluquería ya existe: {}", request.getNombrePeluqueria());
+                    return ResponseEntity.badRequest()
+                            .body(Map.of("error", "El nombre de peluquería ya está registrado"));
+                }
 
             } else {
                 tenant = tenantService.findById(request.getTenantId());
@@ -104,12 +112,12 @@ public class AuthController {
             User user = new User();
             user.setNombre(request.getNombre());
             user.setEmail(request.getEmail());
-            user.setPassword(request.getPassword()); // UserService lo encripta
+            user.setPassword(request.getPassword());
             user.setTenant(tenant);
             user.setRole("ADMIN");
             user = userService.save(user);
 
-            // Generar JWT con tenantId embebido (CRÍTICO para multi-tenant)
+            // Generar JWT con tenantId embebido
             final String token = jwtTokenUtil.generateToken(
                     user.getEmail(),
                     tenant.getId(),
