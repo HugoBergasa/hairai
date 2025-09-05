@@ -1,6 +1,6 @@
 package com.peluqueria.recepcionista_virtual.model;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.math.BigDecimal;
 
 @Entity
