@@ -28,6 +28,18 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                                     FilterChain chain)
             throws ServletException, IOException {
 
+        // IMPORTANTE: Excluir rutas públicas del filtro JWT
+        String requestPath = request.getServletPath();
+        if (requestPath.startsWith("/api/auth/") ||
+                requestPath.startsWith("/api/twilio/") ||
+                requestPath.equals("/api/health") ||
+                requestPath.equals("/health") ||
+                requestPath.startsWith("/ws") ||
+                requestPath.startsWith("/actuator/")) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         final String requestTokenHeader = request.getHeader("Authorization");
 
         String username = null;
@@ -48,8 +60,6 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             } catch (Exception e) {
                 logger.error("Unable to get JWT Token", e);
             }
-        } else {
-            logger.warn("JWT Token does not begin with Bearer String");
         }
 
         // Una vez obtenemos el token, lo validamos
