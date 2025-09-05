@@ -18,14 +18,14 @@ public interface TenantRepository extends JpaRepository<Tenant, String> {
     List<Tenant> findByActivo(boolean activo);
 
     /**
-     * Busca un tenant por su nombre
+     * Busca un tenant por su nombre de peluquería
      */
-    Optional<Tenant> findByNombre(String nombre);
+    Optional<Tenant> findByNombrePeluqueria(String nombrePeluqueria);
 
     /**
      * Busca tenants que contengan un texto en el nombre
      */
-    List<Tenant> findByNombreContainingIgnoreCase(String texto);
+    List<Tenant> findByNombrePeluqueriaContainingIgnoreCase(String texto);
 
     /**
      * Cuenta los tenants activos
