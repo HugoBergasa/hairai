@@ -20,8 +20,8 @@ import com.peluqueria.recepcionista_virtual.security.JwtRequestFilter;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Autowired
-    private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+  //  @Autowired
+ //   private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
     @Autowired
     private JwtRequestFilter jwtRequestFilter;
@@ -56,9 +56,9 @@ public class SecurityConfig {
                         // El resto requiere autenticación
                         .anyRequest().authenticated()
                 )
-                .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
-                )
+             //   .exceptionHandling(ex -> ex
+             //           .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+            //    )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 );
