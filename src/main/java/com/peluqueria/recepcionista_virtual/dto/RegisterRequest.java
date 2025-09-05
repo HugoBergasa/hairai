@@ -2,6 +2,7 @@ package com.peluqueria.recepcionista_virtual.dto;
 
 import jakarta.validation.constraints.*;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Data
 public class RegisterRequest {
@@ -16,6 +17,8 @@ public class RegisterRequest {
     @Size(min = 8)
     private String password;
 
+    // SOLUCIÓN: Mapear ambos nombres
+    @JsonProperty("isNewTenant")
     private boolean newTenant = true;
 
     // Si es nuevo tenant
@@ -25,4 +28,9 @@ public class RegisterRequest {
 
     // Si es tenant existente
     private String tenantId;
+
+    // Método adicional para compatibilidad
+    public boolean isNewTenant() {
+        return newTenant;
+    }
 }
