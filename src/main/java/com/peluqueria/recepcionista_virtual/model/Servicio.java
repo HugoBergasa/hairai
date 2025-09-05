@@ -8,8 +8,8 @@ import java.math.BigDecimal;
 public class Servicio {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)  // ← CAMBIAR A UUID
+    private String id;  // ← CAMBIAR A String
 
     @Column(nullable = false)
     private String nombre;
@@ -17,7 +17,7 @@ public class Servicio {
     private String descripcion;
 
     @Column(name = "duracion", nullable = false)
-    private Integer duracionMinutos; // Cambiado el nombre del campo para compatibilidad
+    private Integer duracionMinutos;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal precio;
@@ -25,17 +25,14 @@ public class Servicio {
     @Column(nullable = false)
     private Boolean activo = true;
 
-    // Relación con Tenant (ManyToOne)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id", referencedColumnName = "id")
     private Tenant tenant;
 
-    // Constructor vacío
     public Servicio() {
         this.activo = true;
     }
 
-    // Constructor con parámetros básicos
     public Servicio(String nombre, Integer duracionMinutos, BigDecimal precio) {
         this();
         this.nombre = nombre;
@@ -43,15 +40,16 @@ public class Servicio {
         this.precio = precio;
     }
 
-    // Getters y Setters
-    public Long getId() {
+    // CAMBIAR GETTER/SETTER DE ID
+    public String getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(String id) {
         this.id = id;
     }
 
+    // Resto de getters y setters igual...
     public String getNombre() {
         return nombre;
     }
@@ -68,7 +66,6 @@ public class Servicio {
         this.descripcion = descripcion;
     }
 
-    // Método principal para duracion (compatible con TenantService)
     public Integer getDuracionMinutos() {
         return duracionMinutos;
     }
@@ -77,7 +74,6 @@ public class Servicio {
         this.duracionMinutos = duracionMinutos;
     }
 
-    // Método alternativo para compatibilidad con la BD (columna "duracion")
     public Integer getDuracion() {
         return duracionMinutos;
     }
@@ -102,7 +98,6 @@ public class Servicio {
         this.activo = activo;
     }
 
-    // Getter y Setter para Tenant
     public Tenant getTenant() {
         return tenant;
     }
@@ -111,7 +106,6 @@ public class Servicio {
         this.tenant = tenant;
     }
 
-    // Método helper para obtener el tenantId directamente
     public String getTenantId() {
         return tenant != null ? tenant.getId() : null;
     }
@@ -119,7 +113,7 @@ public class Servicio {
     @Override
     public String toString() {
         return "Servicio{" +
-                "id=" + id +
+                "id='" + id + '\'' +
                 ", nombre='" + nombre + '\'' +
                 ", duracionMinutos=" + duracionMinutos +
                 ", precio=" + precio +
