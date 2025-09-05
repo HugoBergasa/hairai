@@ -13,15 +13,12 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.cors.CorsConfigurationSource;
-import com.peluqueria.recepcionista_virtual.security.JwtAuthenticationEntryPoint;
+import org.springframework.http.HttpMethod;
 import com.peluqueria.recepcionista_virtual.security.JwtRequestFilter;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-
-  //  @Autowired
- //   private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
     @Autowired
     private JwtRequestFilter jwtRequestFilter;
@@ -46,24 +43,22 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authz -> authz
+                        // CRÍTICO: OPTIONS para CORS debe ir PRIMERO
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Endpoints públicos
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers("/api/twilio/**").permitAll()
                         .requestMatchers("/health", "/actuator/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
-                        // Swagger/OpenAPI
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
-                        // El resto requiere autenticación
+                        // MULTI-TENANT: Todo lo demás requiere JWT con tenantId
                         .anyRequest().authenticated()
                 )
-             //   .exceptionHandling(ex -> ex
-             //           .authenticationEntryPoint(jwtAuthenticationEntryPoint)
-            //    )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 );
 
-        // Agregar filtro JWT
+        // JWT Filter DESPUÉS de las reglas
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

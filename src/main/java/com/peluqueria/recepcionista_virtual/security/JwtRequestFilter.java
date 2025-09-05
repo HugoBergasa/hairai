@@ -11,10 +11,14 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.IOException;
 
 @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
+
+    private static final Logger logger = LoggerFactory.getLogger(JwtRequestFilter.class);
 
     @Autowired
     private JwtUserDetailsService jwtUserDetailsService;
@@ -28,14 +32,22 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                                     FilterChain chain)
             throws ServletException, IOException {
 
-        // IMPORTANTE: Excluir rutas públicas del filtro JWT
         String requestPath = request.getServletPath();
-        if (requestPath.startsWith("/api/auth/") ||
+        String method = request.getMethod();
+
+        // Log para debug
+        logger.debug("JWT Filter - Path: {}, Method: {}", requestPath, method);
+
+        // CRÍTICO: Saltar validación para rutas públicas y OPTIONS
+        if ("OPTIONS".equalsIgnoreCase(method) ||
+                requestPath.equals("/api/auth/login") ||
+                requestPath.equals("/api/auth/register") ||
                 requestPath.startsWith("/api/twilio/") ||
-                requestPath.equals("/api/health") ||
                 requestPath.equals("/health") ||
                 requestPath.startsWith("/ws") ||
                 requestPath.startsWith("/actuator/")) {
+
+            logger.debug("Ruta pública o OPTIONS - saltando JWT");
             chain.doFilter(request, response);
             return;
         }
@@ -44,29 +56,29 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
         String username = null;
         String jwtToken = null;
+        String tenantId = null;
 
-        // JWT Token está en la forma "Bearer token"
         if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
             jwtToken = requestTokenHeader.substring(7);
             try {
                 username = jwtTokenUtil.extractUsername(jwtToken);
+                tenantId = jwtTokenUtil.extractTenantId(jwtToken);
 
-                // Agregar tenantId al contexto si existe
-                String tenantId = jwtTokenUtil.extractTenantId(jwtToken);
+                // MULTI-TENANT: Siempre agregar tenantId al request
                 if (tenantId != null) {
                     request.setAttribute("tenantId", tenantId);
+                    logger.debug("TenantId extraído del JWT: {}", tenantId);
                 }
 
             } catch (Exception e) {
-                logger.error("Unable to get JWT Token", e);
+                logger.error("Error procesando JWT: ", e);
             }
         }
 
-        // Una vez obtenemos el token, lo validamos
+        // Validar token y configurar autenticación
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.jwtUserDetailsService.loadUserByUsername(username);
 
-            // Si el token es válido, configuramos Spring Security
             if (jwtTokenUtil.validateToken(jwtToken, userDetails.getUsername())) {
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(
@@ -74,6 +86,8 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
+
+                logger.debug("Usuario autenticado: {} para tenant: {}", username, tenantId);
             }
         }
 

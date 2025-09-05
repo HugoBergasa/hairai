@@ -4,6 +4,7 @@ import com.peluqueria.recepcionista_virtual.dto.*;
 import com.peluqueria.recepcionista_virtual.model.*;
 import com.peluqueria.recepcionista_virtual.security.JwtTokenUtil;
 import com.peluqueria.recepcionista_virtual.service.*;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
@@ -61,49 +62,74 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
-        // Verificar si el email ya existe
-        if (userService.existsByEmail(request.getEmail())) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "El email ya está registrado"));
+        logger.info("=== INICIO REGISTRO MULTI-TENANT ===");
+        logger.info("Request recibido - Email: {}, Nueva peluquería: {}, Nombre: {}",
+                request.getEmail(),
+                request.isNewTenant(),
+                request.getNombrePeluqueria());
+
+        try {
+            // Verificar si el email ya existe
+            if (userService.existsByEmail(request.getEmail())) {
+                logger.warn("Email ya registrado: {}", request.getEmail());
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "El email ya está registrado"));
+            }
+
+            // MULTI-TENANT: Crear o asignar tenant
+            Tenant tenant;
+            if (request.isNewTenant()) {
+                logger.info("Creando nuevo tenant: {}", request.getNombrePeluqueria());
+                tenant = new Tenant();
+                tenant.setNombrePeluqueria(request.getNombrePeluqueria());
+                tenant.setTelefono(request.getTelefono());
+                tenant.setDireccion(request.getDireccion());
+                tenant = tenantService.save(tenant);
+
+                // Crear servicios predeterminados para el tenant
+                tenantService.createDefaultServices(tenant.getId());
+                logger.info("Tenant creado con ID: {}", tenant.getId());
+
+            } else {
+                tenant = tenantService.findById(request.getTenantId());
+                logger.info("Usuario uniéndose a tenant existente: {}", tenant.getId());
+            }
+
+            // Crear usuario vinculado al tenant
+            User user = new User();
+            user.setNombre(request.getNombre());
+            user.setEmail(request.getEmail());
+            user.setPassword(request.getPassword()); // UserService lo encripta
+            user.setTenant(tenant);
+            user.setRole("ADMIN");
+            user = userService.save(user);
+
+            // Generar JWT con tenantId embebido (CRÍTICO para multi-tenant)
+            final String token = jwtTokenUtil.generateToken(
+                    user.getEmail(),
+                    tenant.getId(),
+                    user.getRole()
+            );
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("token", token);
+            response.put("user", UserDTO.fromUser(user));
+            response.put("tenant", TenantDTO.fromTenant(tenant));
+            response.put("message", "Registro exitoso - Sistema multi-tenant configurado");
+
+            logger.info("=== REGISTRO EXITOSO - Tenant: {}, Usuario: {} ===",
+                    tenant.getId(), user.getEmail());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            logger.error("Error en registro multi-tenant: ", e);
+            return ResponseEntity.status(HttpServletResponse.SC_INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "error", "Error en registro",
+                            "detail", e.getMessage()
+                    ));
         }
-
-        // Crear nuevo tenant si es necesario
-        Tenant tenant;
-        if (request.isNewTenant()) {
-            tenant = new Tenant();
-            tenant.setNombrePeluqueria(request.getNombrePeluqueria());
-            tenant.setTelefono(request.getTelefono());
-            tenant.setDireccion(request.getDireccion());
-            tenant = tenantService.save(tenant);
-
-            // Crear servicios predeterminados
-            tenantService.createDefaultServices(tenant.getId());
-        } else {
-            tenant = tenantService.findById(request.getTenantId());
-        }
-
-        // Crear usuario
-        User user = new User();
-        user.setNombre(request.getNombre());
-        user.setEmail(request.getEmail());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setTenant(tenant);
-        user.setRole("ADMIN");
-        user = userService.save(user);
-
-        // Generar token
-        final String token = jwtTokenUtil.generateToken(
-                user.getEmail(),
-                tenant.getId(),
-                user.getRole()
-        );
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("token", token);
-        response.put("user", UserDTO.fromUser(user));
-        response.put("tenant", TenantDTO.fromTenant(tenant));
-
-        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/refresh")
