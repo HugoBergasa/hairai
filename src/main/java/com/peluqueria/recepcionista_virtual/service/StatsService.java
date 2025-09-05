@@ -36,10 +36,10 @@ public class StatsService {
             LocalDateTime startOfDay = now.withHour(0).withMinute(0).withSecond(0);
             LocalDateTime endOfDay = now.withHour(23).withMinute(59).withSecond(59);
 
-            // MULTI-TENANT: Usar método existente countByTenantIdAndFechaHoraBetween
-            long citasHoy = citaRepository.countByTenantIdAndFechaHoraBetween(
+            // CORRECCIÓN: Usar método existente findByTenantIdAndFechaHoraBetween + .size()
+            long citasHoy = citaRepository.findByTenantIdAndFechaHoraBetween(
                     tenantId, startOfDay, endOfDay
-            );
+            ).size();
 
             // Estadísticas básicas
             stats.put("citasHoy", citasHoy);
@@ -51,7 +51,7 @@ public class StatsService {
             stats.put("tenantId", tenantId);
             stats.put("calculatedAt", now.toString());
 
-            System.out.println("DEBUG StatsService: Stats calculadas exitosamente para tenant " + tenantId);
+            System.out.println("DEBUG StatsService: Stats calculadas exitosamente para tenant " + tenantId + " - citasHoy: " + citasHoy);
             return stats;
 
         } catch (Exception e) {
@@ -62,8 +62,7 @@ public class StatsService {
     }
 
     /**
-     * NUEVO: Estadísticas extendidas para dashboard
-     * Usa solo métodos que existen en el repository
+     * CORREGIDO: Estadísticas extendidas para dashboard usando métodos existentes
      */
     public Map<String, Object> getDashboardStats(String tenantId) {
         try {
@@ -80,18 +79,18 @@ public class StatsService {
             LocalDateTime startOfWeek = now.minusDays(7);
             LocalDateTime startOfMonth = now.minusDays(30);
 
-            // MULTI-TENANT: Usar métodos existentes del repository
-            long citasHoy = citaRepository.countByTenantIdAndFechaHoraBetween(
+            // CORRECCIÓN: Usar método existente + .size() en lugar de count no existente
+            long citasHoy = citaRepository.findByTenantIdAndFechaHoraBetween(
                     tenantId, startOfDay, endOfDay
-            );
+            ).size();
 
-            long citasSemana = citaRepository.countByTenantIdAndFechaHoraBetween(
+            long citasSemana = citaRepository.findByTenantIdAndFechaHoraBetween(
                     tenantId, startOfWeek, endOfDay
-            );
+            ).size();
 
-            long citasMes = citaRepository.countByTenantIdAndFechaHoraBetween(
+            long citasMes = citaRepository.findByTenantIdAndFechaHoraBetween(
                     tenantId, startOfMonth, endOfDay
-            );
+            ).size();
 
             // Estadísticas de citas
             stats.put("citasHoy", citasHoy);
@@ -113,10 +112,12 @@ public class StatsService {
             stats.put("tenantId", tenantId);
             stats.put("type", "dashboard");
 
+            System.out.println("DEBUG StatsService: Dashboard stats calculadas para tenant " + tenantId);
             return stats;
 
         } catch (Exception e) {
             System.err.println("ERROR en getDashboardStats: " + e.getMessage());
+            e.printStackTrace();
             return createDefaultDashboardStats();
         }
     }
