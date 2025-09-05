@@ -15,13 +15,80 @@ import java.util.*;
 public class TwilioController {
 
     @Autowired
-    private OpenAIService openAIService; // Tu servicio existente
+    private OpenAIService openAIService;
 
     @Autowired
     private CitaService citaService;
 
     @Value("${default.tenant.id:tenant_demo_001}")
     private String defaultTenantId;
+
+    /**
+     * 🚨 ENDPOINT FALTANTE - Causa del error 500
+     * Este es el webhook que Twilio está llamando
+     */
+    @PostMapping(value = "/webhook",
+            consumes = "application/x-www-form-urlencoded",
+            produces = "application/xml; charset=UTF-8")
+    public ResponseEntity<String> webhookTwilio(@RequestParam Map<String, String> params) {
+        try {
+            log.info("🔥 WEBHOOK TWILIO RECIBIDO - Parámetros: {}", params);
+
+            String from = params.get("From");
+            String body = params.get("Body");
+            String callSid = params.get("CallSid");
+            String to = params.get("To");
+
+            // VALIDACIÓN BÁSICA
+            if (from == null) {
+                log.warn("Webhook sin parámetro 'From'");
+                return ResponseEntity.ok(generarTwiMLError("Datos incompletos"));
+            }
+
+            // DETERMINAR TENANT_ID (por ahora usar default)
+            String tenantId = defaultTenantId;
+            log.info("Usando tenant: {} para número: {}", tenantId, to);
+
+            // RESPUESTA BÁSICA DE PRUEBA (sin IA por ahora)
+            String mensaje = "Hola, gracias por contactar con nosotros. " +
+                    "Su mensaje ha sido recibido correctamente. " +
+                    "Un momento, por favor.";
+
+            String twimlResponse = generarTwiMLBasico(mensaje);
+            log.info("Respuesta TwiML generada exitosamente");
+
+            return ResponseEntity.ok(twimlResponse);
+
+        } catch (Exception e) {
+            log.error("❌ ERROR en webhook Twilio: ", e);
+            return ResponseEntity.ok(generarTwiMLError("Error técnico temporal"));
+        }
+    }
+
+    /**
+     * MÉTODO AUXILIAR - Generar TwiML básico
+     */
+    private String generarTwiMLBasico(String mensaje) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                "<Response>" +
+                "<Say language=\"es-ES\" voice=\"Polly.Conchita\">" +
+                mensaje +
+                "</Say>" +
+                "</Response>";
+    }
+
+    /**
+     * MÉTODO AUXILIAR - Generar TwiML de error
+     */
+    private String generarTwiMLError(String error) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                "<Response>" +
+                "<Say language=\"es-ES\">Disculpe, " + error + ". Intente más tarde.</Say>" +
+                "<Hangup/>" +
+                "</Response>";
+    }
+
+    // ===== ENDPOINTS EXISTENTES (mantener tal como están) =====
 
     @PostMapping(value = "/voice", produces = "application/xml; charset=UTF-8")
     public String handleIncomingCall(@RequestParam Map<String, String> params) {
@@ -30,7 +97,6 @@ public class TwilioController {
 
         log.info("📞 Nueva llamada de: {} - CallSid: {}", from, callSid);
 
-        // TwiML con encoding correcto
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
                 "<Response>" +
                 "<Gather input=\"speech\" action=\"/api/twilio/process-speech\" " +
@@ -52,7 +118,7 @@ public class TwilioController {
         log.info("🎤 Usuario dijo: {}", speechResult);
 
         try {
-            // USAR TU OpenAIService EXISTENTE
+            // USAR OpenAIService EXISTENTE (cuando esté completo)
             OpenAIResponse respuestaIA = openAIService.procesarMensaje(
                     speechResult,
                     defaultTenantId,
@@ -67,7 +133,6 @@ public class TwilioController {
                     respuestaIA.getDatosCita() != null &&
                     respuestaIA.getDatosCita().isCompleto()) {
 
-                // Crear la cita usando tu CitaService
                 try {
                     citaService.crearCita(
                             defaultTenantId,
@@ -81,7 +146,6 @@ public class TwilioController {
                 }
             }
 
-            // Continuar la conversación
             return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
                     "<Response>" +
                     "<Gather input=\"speech\" action=\"/api/twilio/process-speech\" " +
@@ -106,9 +170,7 @@ public class TwilioController {
     @PostMapping(value = "/hangup", produces = "application/xml; charset=UTF-8")
     public String handleHangup(@RequestParam Map<String, String> params) {
         String callSid = params.get("CallSid");
-        log.info("📴 Llamada finalizada: {}", callSid);
-
-        // Aquí podrías actualizar métricas, logs, etc.
+        log.info("🔴 Llamada finalizada: {}", callSid);
 
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>";
     }
@@ -116,7 +178,6 @@ public class TwilioController {
     @GetMapping("/test")
     @ResponseBody
     public Map<String, Object> test() {
-        // Probar que OpenAI funciona
         try {
             OpenAIResponse test = openAIService.procesarMensaje(
                     "Hola, quiero una cita",
