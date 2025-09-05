@@ -3,8 +3,11 @@ package com.peluqueria.recepcionista_virtual.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,6 +21,18 @@ public class JwtTokenUtil {
 
     @Value("${spring.security.jwt.expiration:86400000}")
     private Long expiration;
+
+    private SecretKey getSigningKey() {
+        // Asegurar que el secret tenga al menos 32 caracteres
+        String key = secret;
+        while (key.length() < 32) {
+            key = key + key;
+        }
+        if (key.length() > 32) {
+            key = key.substring(0, 32);
+        }
+        return Keys.hmacShaKeyFor(key.getBytes(StandardCharsets.UTF_8));
+    }
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -34,7 +49,7 @@ public class JwtTokenUtil {
 
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .setSigningKey(secret)
+                .setSigningKey(getSigningKey())
                 .parseClaimsJws(token)
                 .getBody();
     }
@@ -56,7 +71,7 @@ public class JwtTokenUtil {
                 .setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(SignatureAlgorithm.HS512, secret)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)  // Usar el método actualizado
                 .compact();
     }
 
