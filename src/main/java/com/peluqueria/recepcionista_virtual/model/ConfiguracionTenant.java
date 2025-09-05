@@ -1,6 +1,6 @@
 package com.peluqueria.recepcionista_virtual.model;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
@@ -62,7 +62,7 @@ public class ConfiguracionTenant {
         STRING, INTEGER, BOOLEAN, JSON, DECIMAL, TIME, DATE
     }
 
-    // Claves de configuración predefinidas (para referencia)
+    // Claves de configuración predefinidas
     public static class Claves {
         public static final String NOMBRE_NEGOCIO = "nombre_negocio";
         public static final String HORARIO_APERTURA = "horario_apertura";
@@ -91,7 +91,6 @@ public class ConfiguracionTenant {
         public static final String INTEGRACIONES = "INTEGRACIONES";
     }
 
-    // Método para actualizar
     @PreUpdate
     public void preUpdate() {
         this.updatedAt = LocalDateTime.now();
@@ -178,7 +177,7 @@ public class ConfiguracionTenant {
         this.updatedAt = updatedAt;
     }
 
-    // Métodos útiles para conversión de tipos
+    // Métodos útiles para conversión
     public Integer getValorAsInteger() {
         try {
             return Integer.parseInt(valor);

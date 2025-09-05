@@ -72,13 +72,6 @@
             <version>0.9.1</version>
         </dependency>
 
-        <!-- Agregar esta dependencia para Java 11+ -->
-        <dependency>
-            <groupId>javax.xml.bind</groupId>
-            <artifactId>jaxb-api</artifactId>
-            <version>2.3.1</version>
-        </dependency>
-
         <!-- Lombok para reducir código -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -105,11 +98,6 @@
             <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>javax.persistence</groupId>
-            <artifactId>javax.persistence-api</artifactId>
-            <version>2.2</version>
-        </dependency>
         <dependency>
             <groupId>jakarta.annotation</groupId>
             <artifactId>jakarta.annotation-api</artifactId>
