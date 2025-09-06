@@ -19,4 +19,7 @@ public interface ClienteRepository extends JpaRepository<Cliente, String> {
     @Query("SELECT c FROM Cliente c WHERE c.telefono = :telefono AND c.tenant.id = :tenantId ORDER BY c.fechaRegistro DESC")
     List<Cliente> findAllByTelefonoAndTenantId(@Param("telefono") String telefono,
                                                @Param("tenantId") String tenantId);
+
+    @Query("SELECT c FROM Cliente c WHERE c.tenant.id = :tenantId")
+    List<Cliente> findByTenantId(@Param("tenantId") String tenantId);
 }
