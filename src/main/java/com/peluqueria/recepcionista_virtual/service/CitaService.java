@@ -3,6 +3,7 @@ package com.peluqueria.recepcionista_virtual.service;
 import com.peluqueria.recepcionista_virtual.model.*;
 import com.peluqueria.recepcionista_virtual.repository.*;
 import com.peluqueria.recepcionista_virtual.dto.DatosCita;
+import com.peluqueria.recepcionista_virtual.dto.CitaDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -34,7 +36,16 @@ public class CitaService {
     @Autowired
     private TwilioAIService twilioService;
 
-    // ✅ MÉTODO PRINCIPAL para crear cita desde IA - MENSAJES DINÁMICOS
+    @Autowired
+    private OpenAIService openAIService;
+
+    // ========================================================================================
+    // 🤖 MÉTODOS IA EXISTENTES - MANTENIDOS COMPLETAMENTE
+    // ========================================================================================
+
+    /**
+     * ✅ MÉTODO PRINCIPAL para crear cita desde IA - MENSAJES DINÁMICOS
+     */
     public Cita crearCita(String tenantId, String telefono, DatosCita datos) {
         try {
             // 1. Obtener el Tenant
@@ -67,8 +78,8 @@ public class CitaService {
             // 4. Parsear fecha y hora
             LocalDateTime fechaHora = parsearFechaHora(datos.getFecha(), datos.getHora());
 
-            // 5. Buscar empleado disponible
-            Empleado empleado = buscarEmpleadoDisponible(tenantId, fechaHora);
+            // 5. 🤖 IA AUTOMÁTICA: Buscar empleado disponible inteligentemente
+            Empleado empleado = buscarEmpleadoDisponibleConIA(tenantId, fechaHora, servicio);
 
             // 6. Crear la cita
             Cita cita = new Cita();
@@ -98,7 +109,9 @@ public class CitaService {
         }
     }
 
-    // MÉTODO LEGACY (mantener para compatibilidad)
+    /**
+     * MÉTODO LEGACY (mantener para compatibilidad)
+     */
     public Cita crearCita(String tenantId, String telefonoCliente,
                           String servicioId, LocalDateTime fechaHora) {
 
@@ -126,6 +139,358 @@ public class CitaService {
 
         return citaGuardada;
     }
+
+    // ========================================================================================
+    // 🎯 NUEVOS MÉTODOS DTO PARA DASHBOARD - CON IA INTEGRADA
+    // ========================================================================================
+
+    /**
+     * 📋 OBTENER CITAS POR TENANT
+     */
+    public List<CitaDTO> getCitasByTenantId(String tenantId) {
+        List<Cita> citas = citaRepository.findByTenantIdOrderByFechaHoraDesc(tenantId);
+        return citas.stream()
+                .map(CitaDTO::fromCita)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 📅 OBTENER CITAS POR FECHA
+     */
+    public List<CitaDTO> getCitasByTenantIdAndFecha(String tenantId, String fecha) {
+        try {
+            LocalDate fechaParsed = LocalDate.parse(fecha);
+            LocalDateTime inicio = fechaParsed.atStartOfDay();
+            LocalDateTime fin = fechaParsed.atTime(23, 59, 59);
+
+            List<Cita> citas = citaRepository.findByTenantIdAndFechaHoraBetween(tenantId, inicio, fin);
+            return citas.stream()
+                    .map(CitaDTO::fromCita)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            return getCitasByTenantId(tenantId);
+        }
+    }
+
+    /**
+     * 🔄 OBTENER CITAS POR ESTADO
+     */
+    public List<CitaDTO> getCitasByTenantIdAndEstado(String tenantId, String estado) {
+        try {
+            EstadoCita estadoCita = EstadoCita.valueOf(estado.toUpperCase());
+            List<Cita> citas = citaRepository.findByTenantIdAndEstado(tenantId, estadoCita);
+            return citas.stream()
+                    .map(CitaDTO::fromCita)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            return getCitasByTenantId(tenantId);
+        }
+    }
+
+    /**
+     * 📅 OBTENER CITAS DE HOY
+     */
+    public List<CitaDTO> getCitasHoyByTenantId(String tenantId) {
+        LocalDateTime inicio = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime fin = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59);
+
+        List<Cita> citas = citaRepository.findByTenantIdAndFechaHoraBetween(tenantId, inicio, fin);
+        return citas.stream()
+                .map(CitaDTO::fromCita)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 🤖 CREAR CITA DESDE DASHBOARD - CON IA AUTOMÁTICA
+     */
+    public CitaDTO createCita(String tenantId, CitaDTO citaDTO) {
+        try {
+            // Validar tenant
+            Tenant tenant = tenantRepository.findById(tenantId)
+                    .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
+
+            // Obtener cliente
+            Cliente cliente = clienteRepository.findById(citaDTO.getClienteId())
+                    .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+
+            // Validar que el cliente pertenece al tenant
+            if (!cliente.getTenant().getId().equals(tenantId)) {
+                throw new RuntimeException("Cliente no pertenece al tenant");
+            }
+
+            // Obtener servicio
+            Servicio servicio = servicioRepository.findById(citaDTO.getServicioId())
+                    .orElseThrow(() -> new RuntimeException("Servicio no encontrado"));
+
+            // Validar que el servicio pertenece al tenant
+            if (!servicio.getTenant().getId().equals(tenantId)) {
+                throw new RuntimeException("Servicio no pertenece al tenant");
+            }
+
+            // 🤖 IA AUTOMÁTICA: Si no se especifica empleado, la IA elige el mejor
+            Empleado empleado = null;
+            if (citaDTO.getEmpleadoId() != null) {
+                empleado = empleadoRepository.findById(citaDTO.getEmpleadoId())
+                        .orElse(null);
+            }
+
+            if (empleado == null) {
+                empleado = buscarEmpleadoDisponibleConIA(tenantId, citaDTO.getFechaHora(), servicio);
+            }
+
+            // 🤖 IA AUTOMÁTICA: Optimizar horario si hay conflictos
+            LocalDateTime fechaHoraOptimizada = optimizarHorarioConIA(tenantId, citaDTO.getFechaHora(), servicio, empleado);
+
+            // Crear cita
+            Cita cita = new Cita();
+            cita.setTenant(tenant);
+            cita.setCliente(cliente);
+            cita.setServicio(servicio);
+            cita.setEmpleado(empleado);
+            cita.setFechaHora(fechaHoraOptimizada);
+            cita.setEstado(EstadoCita.CONFIRMADA);
+            cita.setOrigen(OrigenCita.MANUAL);
+            cita.setDuracionMinutos(servicio.getDuracionMinutos());
+            cita.setPrecio(servicio.getPrecio());
+            cita.setNotas(citaDTO.getNotas());
+
+            Cita citaGuardada = citaRepository.save(cita);
+
+            // 🤖 IA AUTOMÁTICA: Enviar confirmación inteligente
+            enviarConfirmacionPersonalizada(citaGuardada);
+
+            return CitaDTO.fromCita(citaGuardada);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error creando cita: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 📋 OBTENER CITA POR ID
+     */
+    public CitaDTO getCitaById(String citaId) {
+        Cita cita = citaRepository.findById(citaId)
+                .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
+        return CitaDTO.fromCita(cita);
+    }
+
+    /**
+     * ✏️ ACTUALIZAR CITA - CON IA AUTOMÁTICA
+     */
+    public CitaDTO updateCita(String citaId, CitaDTO citaDTO) {
+        try {
+            Cita cita = citaRepository.findById(citaId)
+                    .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
+
+            String tenantId = cita.getTenant().getId();
+
+            // Actualizar campos si están presentes
+            if (citaDTO.getFechaHora() != null && !citaDTO.getFechaHora().equals(cita.getFechaHora())) {
+                // 🤖 IA AUTOMÁTICA: Optimizar nuevo horario
+                LocalDateTime fechaHoraOptimizada = optimizarHorarioConIA(tenantId, citaDTO.getFechaHora(), cita.getServicio(), cita.getEmpleado());
+                cita.setFechaHora(fechaHoraOptimizada);
+            }
+
+            if (citaDTO.getServicioId() != null && !citaDTO.getServicioId().equals(cita.getServicio().getId())) {
+                Servicio nuevoServicio = servicioRepository.findById(citaDTO.getServicioId())
+                        .orElseThrow(() -> new RuntimeException("Servicio no encontrado"));
+                cita.setServicio(nuevoServicio);
+                cita.setDuracionMinutos(nuevoServicio.getDuracionMinutos());
+                cita.setPrecio(nuevoServicio.getPrecio());
+            }
+
+            if (citaDTO.getEmpleadoId() != null && (cita.getEmpleado() == null || !citaDTO.getEmpleadoId().equals(cita.getEmpleado().getId()))) {
+                Empleado nuevoEmpleado = empleadoRepository.findById(citaDTO.getEmpleadoId())
+                        .orElse(null);
+                cita.setEmpleado(nuevoEmpleado);
+            }
+
+            if (citaDTO.getEstado() != null) {
+                EstadoCita nuevoEstado = EstadoCita.valueOf(citaDTO.getEstado());
+                cita.setEstado(nuevoEstado);
+
+                // 🤖 IA AUTOMÁTICA: Enviar notificaciones según el estado
+                enviarNotificacionCambioEstado(cita, nuevoEstado);
+            }
+
+            if (citaDTO.getNotas() != null) {
+                cita.setNotas(citaDTO.getNotas());
+            }
+
+            Cita citaActualizada = citaRepository.save(cita);
+            return CitaDTO.fromCita(citaActualizada);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error actualizando cita: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 🗑️ ELIMINAR CITA (CANCELAR)
+     */
+    public void deleteCita(String citaId) {
+        Cita cita = citaRepository.findById(citaId)
+                .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
+
+        cita.setEstado(EstadoCita.CANCELADA);
+        citaRepository.save(cita);
+
+        // 🤖 IA AUTOMÁTICA: Enviar notificación de cancelación
+        enviarNotificacionCancelacion(cita);
+    }
+
+    // ========================================================================================
+    // 🤖 MÉTODOS IA AUTOMÁTICA - CEREBRO INTELIGENTE
+    // ========================================================================================
+
+    /**
+     * 🤖 IA: Buscar empleado disponible con inteligencia artificial
+     */
+    private Empleado buscarEmpleadoDisponibleConIA(String tenantId, LocalDateTime fechaHora, Servicio servicio) {
+        try {
+            List<Empleado> empleados = empleadoRepository.findByTenantIdAndActivoTrue(tenantId);
+
+            if (empleados.isEmpty()) {
+                return null;
+            }
+
+            // 🤖 IA: Filtrar empleados por especialidad si hay coincidencia
+            if (servicio != null && servicio.getNombre() != null) {
+                List<Empleado> empleadosEspecializados = empleados.stream()
+                        .filter(emp -> emp.getEspecialidad() != null &&
+                                emp.getEspecialidad().toLowerCase().contains(servicio.getNombre().toLowerCase()))
+                        .collect(Collectors.toList());
+
+                if (!empleadosEspecializados.isEmpty()) {
+                    empleados = empleadosEspecializados;
+                }
+            }
+
+            // 🤖 IA: Verificar disponibilidad y cargar de trabajo
+            Map<Empleado, Integer> cargaTrabajo = new HashMap<>();
+
+            for (Empleado empleado : empleados) {
+                // Contar citas del día para este empleado
+                List<Cita> citasDelDia = citaRepository.findByEmpleadoIdAndFechaHoraBetween(
+                        empleado.getId(),
+                        fechaHora.toLocalDate().atStartOfDay(),
+                        fechaHora.toLocalDate().atTime(23, 59)
+                );
+
+                cargaTrabajo.put(empleado, citasDelDia.size());
+            }
+
+            // 🤖 IA: Seleccionar empleado con menor carga de trabajo
+            return cargaTrabajo.entrySet().stream()
+                    .min(Map.Entry.comparingByValue())
+                    .map(Map.Entry::getKey)
+                    .orElse(empleados.get(0));
+
+        } catch (Exception e) {
+            // Fallback: primer empleado disponible
+            List<Empleado> empleados = empleadoRepository.findByTenantIdAndActivoTrue(tenantId);
+            return empleados.isEmpty() ? null : empleados.get(0);
+        }
+    }
+
+    /**
+     * 🤖 IA: Optimizar horario para evitar conflictos
+     */
+    private LocalDateTime optimizarHorarioConIA(String tenantId, LocalDateTime fechaHoraDeseada, Servicio servicio, Empleado empleado) {
+        try {
+            // Verificar si el horario está disponible
+            List<Cita> citasConflicto = citaRepository.findByTenantIdAndFechaHoraBetween(
+                    tenantId,
+                    fechaHoraDeseada.minusMinutes(30),
+                    fechaHoraDeseada.plusMinutes(servicio != null ? servicio.getDuracionMinutos() : 60)
+            );
+
+            // Si no hay conflictos, usar horario deseado
+            if (citasConflicto.isEmpty()) {
+                return fechaHoraDeseada;
+            }
+
+            // 🤖 IA: Buscar siguiente slot disponible
+            LocalDateTime horarioOptimo = fechaHoraDeseada;
+            for (int i = 0; i < 48; i++) { // Buscar en próximas 24 horas (slots de 30min)
+                horarioOptimo = horarioOptimo.plusMinutes(30);
+
+                List<Cita> conflictos = citaRepository.findByTenantIdAndFechaHoraBetween(
+                        tenantId,
+                        horarioOptimo.minusMinutes(15),
+                        horarioOptimo.plusMinutes(servicio != null ? servicio.getDuracionMinutos() : 60)
+                );
+
+                if (conflictos.isEmpty()) {
+                    return horarioOptimo;
+                }
+            }
+
+            // Fallback: horario original
+            return fechaHoraDeseada;
+
+        } catch (Exception e) {
+            return fechaHoraDeseada;
+        }
+    }
+
+    /**
+     * 🤖 IA: Enviar notificación según cambio de estado
+     */
+    private void enviarNotificacionCambioEstado(Cita cita, EstadoCita nuevoEstado) {
+        try {
+            Tenant tenant = cita.getTenant();
+            String mensaje = "";
+
+            switch (nuevoEstado) {
+                case CONFIRMADA:
+                    mensaje = String.format("✅ Su cita en %s ha sido confirmada para el %s.",
+                            tenant.getNombrePeluqueria(),
+                            cita.getFechaHora().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+                    break;
+                case CANCELADA:
+                    mensaje = String.format("❌ Su cita en %s ha sido cancelada. Para reagendar contáctenos.",
+                            tenant.getNombrePeluqueria());
+                    break;
+                case COMPLETADA:
+                    mensaje = String.format("🎉 Gracias por visitar %s. ¿Cómo calificaría nuestro servicio? Responda del 1 al 5.",
+                            tenant.getNombrePeluqueria());
+                    break;
+            }
+
+            if (!mensaje.isEmpty()) {
+                twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error enviando notificación de cambio de estado: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 🤖 IA: Notificación inteligente de cancelación
+     */
+    private void enviarNotificacionCancelacion(Cita cita) {
+        try {
+            Tenant tenant = cita.getTenant();
+            String mensaje = String.format(
+                    "❌ Su cita en %s del %s ha sido cancelada. Para reagendar%s visite nuestras instalaciones.",
+                    tenant.getNombrePeluqueria(),
+                    cita.getFechaHora().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
+                    tenant.getTelefono() != null ? " llame al " + tenant.getTelefono() + " o" : ""
+            );
+
+            twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
+
+        } catch (Exception e) {
+            System.err.println("Error enviando notificación de cancelación: " + e.getMessage());
+        }
+    }
+
+    // ========================================================================================
+    // 🔧 MÉTODOS LEGACY MANTENIDOS
+    // ========================================================================================
 
     private LocalDateTime parsearFechaHora(String fecha, String hora) {
         try {
@@ -167,16 +532,7 @@ public class CitaService {
     }
 
     private Empleado buscarEmpleadoDisponible(String tenantId, LocalDateTime fechaHora) {
-        try {
-            List<Empleado> empleados = empleadoRepository.findByTenantIdAndActivoTrue(tenantId);
-            if (!empleados.isEmpty()) {
-                // Por ahora, asignar el primer empleado disponible
-                return empleados.get(0);
-            }
-        } catch (Exception e) {
-            // Log pero continuar sin empleado
-        }
-        return null;
+        return buscarEmpleadoDisponibleConIA(tenantId, fechaHora, null);
     }
 
     /**
@@ -208,20 +564,7 @@ public class CitaService {
      * ✅ CANCELAR CITA CON MENSAJE PERSONALIZADO POR TENANT
      */
     public void cancelarCita(String citaId) {
-        Cita cita = citaRepository.findById(citaId)
-                .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
-
-        cita.setEstado(EstadoCita.CANCELADA);
-        citaRepository.save(cita);
-
-        Tenant tenant = cita.getTenant();
-        String mensaje = String.format(
-                "❌ Su cita en %s ha sido cancelada. Para reagendar%s visite nuestras instalaciones.",
-                tenant.getNombrePeluqueria(),
-                tenant.getTelefono() != null ? " llame al " + tenant.getTelefono() + " o" : ""
-        );
-
-        twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
+        deleteCita(citaId); // Usa el nuevo método inteligente
     }
 
     /**

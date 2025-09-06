@@ -281,8 +281,414 @@ public class DashboardController {
         }
     }
 
-    // ===== SIMILAR PARA EMPLEADOS CON VALIDACIONES =====
-    // ... (Implementación similar con validaciones de seguridad)
+    // ===== GESTIÓN DE EMPLEADOS =====
+    @GetMapping("/empleados")
+    public ResponseEntity<?> getEmpleados(HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            List<EmpleadoDTO> empleados = empleadoService.getEmpleadosByTenantId(tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", empleados,
+                    "count", empleados.size()
+            ));
+        } catch (Exception e) {
+            logger.error("Error obteniendo empleados: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/empleados")
+    public ResponseEntity<?> createEmpleado(@Valid @RequestBody EmpleadoDTO empleadoDTO,
+                                            HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDACIONES DE NEGOCIO
+            if (empleadoDTO.getNombre() == null || empleadoDTO.getNombre().trim().length() < 2) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "El nombre del empleado es requerido (mín. 2 caracteres)"
+                ));
+            }
+
+            if (empleadoDTO.getEmail() != null && !empleadoDTO.getEmail().contains("@")) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "El email debe tener un formato válido"
+                ));
+            }
+
+            EmpleadoDTO created = empleadoService.createEmpleado(tenantId, empleadoDTO);
+            logger.info("Empleado creado: {} para tenant: {}", created.getNombre(), tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", created,
+                    "message", "Empleado creado correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error creando empleado: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PutMapping("/empleados/{empleadoId}")
+    public ResponseEntity<?> updateEmpleado(@PathVariable String empleadoId,
+                                            @Valid @RequestBody EmpleadoDTO empleadoDTO,
+                                            HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDAR QUE EL EMPLEADO PERTENECE AL TENANT
+            EmpleadoDTO existing = empleadoService.getEmpleadoById(empleadoId);
+            if (!existing.getTenantId().equals(tenantId)) {
+                logger.warn("Intento de modificar empleado de otro tenant. EmpleadoId: {}, TenantId: {}",
+                        empleadoId, tenantId);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Acceso denegado al empleado"
+                ));
+            }
+
+            EmpleadoDTO updated = empleadoService.updateEmpleado(empleadoId, empleadoDTO);
+            logger.info("Empleado actualizado: {} para tenant: {}", empleadoId, tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", updated,
+                    "message", "Empleado actualizado correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error actualizando empleado: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @DeleteMapping("/empleados/{empleadoId}")
+    public ResponseEntity<?> deleteEmpleado(@PathVariable String empleadoId,
+                                            HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDAR PROPIEDAD DEL EMPLEADO
+            EmpleadoDTO existing = empleadoService.getEmpleadoById(empleadoId);
+            if (!existing.getTenantId().equals(tenantId)) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Acceso denegado al empleado"
+                ));
+            }
+
+            empleadoService.deleteEmpleado(empleadoId);
+            logger.info("Empleado eliminado: {} para tenant: {}", empleadoId, tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Empleado eliminado correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error eliminando empleado: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    // ===== GESTIÓN DE CLIENTES =====
+    @GetMapping("/clientes")
+    public ResponseEntity<?> getClientes(HttpServletRequest request,
+                                         @RequestParam(required = false) String search,
+                                         @RequestParam(defaultValue = "0") int page,
+                                         @RequestParam(defaultValue = "50") int size) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            List<ClienteDTO> clientes;
+            if (search != null && !search.trim().isEmpty()) {
+                clientes = clienteService.searchClientesByTenantId(tenantId, search);
+            } else {
+                clientes = clienteService.getClientesByTenantId(tenantId);
+            }
+
+            // Paginación simple
+            int total = clientes.size();
+            int fromIndex = Math.min(page * size, total);
+            int toIndex = Math.min(fromIndex + size, total);
+            List<ClienteDTO> paginatedClientes = clientes.subList(fromIndex, toIndex);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", paginatedClientes,
+                    "count", paginatedClientes.size(),
+                    "total", total,
+                    "page", page,
+                    "totalPages", (int) Math.ceil((double) total / size)
+            ));
+        } catch (Exception e) {
+            logger.error("Error obteniendo clientes: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/clientes")
+    public ResponseEntity<?> createCliente(@Valid @RequestBody ClienteDTO clienteDTO,
+                                           HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDACIONES DE NEGOCIO
+            if (clienteDTO.getNombre() == null || clienteDTO.getNombre().trim().length() < 2) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "El nombre del cliente es requerido (mín. 2 caracteres)"
+                ));
+            }
+
+            if (clienteDTO.getTelefono() == null || clienteDTO.getTelefono().trim().length() < 9) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "El teléfono es requerido (mín. 9 caracteres)"
+                ));
+            }
+
+            if (clienteDTO.getEmail() != null && !clienteDTO.getEmail().contains("@")) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "El email debe tener un formato válido"
+                ));
+            }
+
+            ClienteDTO created = clienteService.createCliente(tenantId, clienteDTO);
+            logger.info("Cliente creado: {} para tenant: {}", created.getNombre(), tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", created,
+                    "message", "Cliente creado correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error creando cliente: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PutMapping("/clientes/{clienteId}")
+    public ResponseEntity<?> updateCliente(@PathVariable String clienteId,
+                                           @Valid @RequestBody ClienteDTO clienteDTO,
+                                           HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDAR QUE EL CLIENTE PERTENECE AL TENANT
+            ClienteDTO existing = clienteService.getClienteById(clienteId);
+            if (!existing.getTenantId().equals(tenantId)) {
+                logger.warn("Intento de modificar cliente de otro tenant. ClienteId: {}, TenantId: {}",
+                        clienteId, tenantId);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Acceso denegado al cliente"
+                ));
+            }
+
+            ClienteDTO updated = clienteService.updateCliente(clienteId, clienteDTO);
+            logger.info("Cliente actualizado: {} para tenant: {}", clienteId, tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", updated,
+                    "message", "Cliente actualizado correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error actualizando cliente: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    // ===== GESTIÓN DE CITAS =====
+    @GetMapping("/citas")
+    public ResponseEntity<?> getCitas(HttpServletRequest request,
+                                      @RequestParam(required = false) String fecha,
+                                      @RequestParam(required = false) String estado,
+                                      @RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "20") int size) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            List<CitaDTO> citas;
+            if (fecha != null) {
+                citas = citaService.getCitasByTenantIdAndFecha(tenantId, fecha);
+            } else if (estado != null) {
+                citas = citaService.getCitasByTenantIdAndEstado(tenantId, estado);
+            } else {
+                citas = citaService.getCitasByTenantId(tenantId);
+            }
+
+            // Paginación
+            int total = citas.size();
+            int fromIndex = Math.min(page * size, total);
+            int toIndex = Math.min(fromIndex + size, total);
+            List<CitaDTO> paginatedCitas = citas.subList(fromIndex, toIndex);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", paginatedCitas,
+                    "count", paginatedCitas.size(),
+                    "total", total,
+                    "page", page,
+                    "totalPages", (int) Math.ceil((double) total / size)
+            ));
+        } catch (Exception e) {
+            logger.error("Error obteniendo citas: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/citas")
+    public ResponseEntity<?> createCita(@Valid @RequestBody CitaDTO citaDTO,
+                                        HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDACIONES DE NEGOCIO
+            if (citaDTO.getClienteId() == null || citaDTO.getClienteId().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "El cliente es requerido"
+                ));
+            }
+
+            if (citaDTO.getServicioId() == null || citaDTO.getServicioId().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "El servicio es requerido"
+                ));
+            }
+
+            if (citaDTO.getFechaHora() == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "La fecha y hora son requeridas"
+                ));
+            }
+
+            CitaDTO created = citaService.createCita(tenantId, citaDTO);
+            logger.info("Cita creada: {} para tenant: {}", created.getId(), tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", created,
+                    "message", "Cita creada correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error creando cita: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PutMapping("/citas/{citaId}")
+    public ResponseEntity<?> updateCita(@PathVariable String citaId,
+                                        @Valid @RequestBody CitaDTO citaDTO,
+                                        HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDAR QUE LA CITA PERTENECE AL TENANT
+            CitaDTO existing = citaService.getCitaById(citaId);
+            if (!existing.getTenantId().equals(tenantId)) {
+                logger.warn("Intento de modificar cita de otro tenant. CitaId: {}, TenantId: {}",
+                        citaId, tenantId);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Acceso denegado a la cita"
+                ));
+            }
+
+            CitaDTO updated = citaService.updateCita(citaId, citaDTO);
+            logger.info("Cita actualizada: {} para tenant: {}", citaId, tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", updated,
+                    "message", "Cita actualizada correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error actualizando cita: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @DeleteMapping("/citas/{citaId}")
+    public ResponseEntity<?> deleteCita(@PathVariable String citaId,
+                                        HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            // 🔒 VALIDAR PROPIEDAD DE LA CITA
+            CitaDTO existing = citaService.getCitaById(citaId);
+            if (!existing.getTenantId().equals(tenantId)) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Acceso denegado a la cita"
+                ));
+            }
+
+            citaService.deleteCita(citaId);
+            logger.info("Cita eliminada: {} para tenant: {}", citaId, tenantId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Cita eliminada correctamente"
+            ));
+        } catch (Exception e) {
+            logger.error("Error eliminando cita: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
 
     // ===== ESTADÍSTICAS SEGURAS =====
     @GetMapping("/stats")
@@ -327,21 +733,14 @@ public class DashboardController {
             List<ServicioDTO> servicios = servicioService.getServiciosByTenantId(tenantId);
             overview.put("totalServicios", servicios.size());
 
-            // Empleados (si tienes el service)
-            try {
-                List<EmpleadoDTO> empleados = empleadoService.getEmpleadosByTenantId(tenantId);
-                overview.put("totalEmpleados", empleados.size());
-            } catch (Exception e) {
-                overview.put("totalEmpleados", 0);
-            }
+            List<EmpleadoDTO> empleados = empleadoService.getEmpleadosByTenantId(tenantId);
+            overview.put("totalEmpleados", empleados.size());
 
-            // Clientes (si tienes el service)
-            try {
-                List<ClienteDTO> clientes = clienteService.getClientesByTenantId(tenantId);
-                overview.put("totalClientes", clientes.size());
-            } catch (Exception e) {
-                overview.put("totalClientes", 0);
-            }
+            List<ClienteDTO> clientes = clienteService.getClientesByTenantId(tenantId);
+            overview.put("totalClientes", clientes.size());
+
+            List<CitaDTO> citasHoy = citaService.getCitasHoyByTenantId(tenantId);
+            overview.put("citasHoy", citasHoy.size());
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
