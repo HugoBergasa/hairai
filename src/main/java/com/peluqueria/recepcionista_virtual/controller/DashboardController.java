@@ -305,4 +305,54 @@ public class DashboardController {
             ));
         }
     }
+
+    // ===== RESUMEN GENERAL DEL DASHBOARD =====
+    @GetMapping("/overview")
+    public ResponseEntity<?> getDashboardOverview(HttpServletRequest request) {
+        try {
+            String tenantId = extractTenantId(request);
+            validateTenantAccess(tenantId);
+
+            Map<String, Object> overview = new HashMap<>();
+
+            // Configuración del salón
+            TenantDTO salon = TenantDTO.fromTenant(tenantService.findById(tenantId));
+            overview.put("salon", salon);
+
+            // Estadísticas
+            Map<String, Object> stats = statsService.getDashboardStats(tenantId);
+            overview.put("stats", stats);
+
+            // Contadores rápidos
+            List<ServicioDTO> servicios = servicioService.getServiciosByTenantId(tenantId);
+            overview.put("totalServicios", servicios.size());
+
+            // Empleados (si tienes el service)
+            try {
+                List<EmpleadoDTO> empleados = empleadoService.getEmpleadosByTenantId(tenantId);
+                overview.put("totalEmpleados", empleados.size());
+            } catch (Exception e) {
+                overview.put("totalEmpleados", 0);
+            }
+
+            // Clientes (si tienes el service)
+            try {
+                List<ClienteDTO> clientes = clienteService.getClientesByTenantId(tenantId);
+                overview.put("totalClientes", clientes.size());
+            } catch (Exception e) {
+                overview.put("totalClientes", 0);
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", overview
+            ));
+        } catch (Exception e) {
+            logger.error("Error obteniendo overview: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
 }
