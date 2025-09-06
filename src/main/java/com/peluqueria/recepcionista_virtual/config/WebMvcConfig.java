@@ -13,8 +13,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(tenantInterceptor)
-                .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/auth/**", "/api/twilio/**");
+        // Comentar temporalmente hasta definir filtros Hibernate
+        // registry.addInterceptor(tenantInterceptor)
+        //         .addPathPatterns("/api/**")
+        //         .excludePathPatterns("/api/auth/**", "/api/twilio/**");
     }
 }
