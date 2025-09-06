@@ -307,11 +307,10 @@ public class CitaService {
             }
 
             if (citaDTO.getEstado() != null) {
-                EstadoCita nuevoEstado = EstadoCita.valueOf(citaDTO.getEstado());
-                cita.setEstado(nuevoEstado);
+                cita.setEstado(citaDTO.getEstado());
 
                 // 🤖 IA AUTOMÁTICA: Enviar notificaciones según el estado
-                enviarNotificacionCambioEstado(cita, nuevoEstado);
+                enviarNotificacionCambioEstado(cita, citaDTO.getEstado());  // ← Usar directamente el estado del DTO
             }
 
             if (citaDTO.getNotas() != null) {

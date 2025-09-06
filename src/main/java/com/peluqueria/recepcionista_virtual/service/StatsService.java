@@ -1,5 +1,6 @@
 package com.peluqueria.recepcionista_virtual.service;
 
+import com.peluqueria.recepcionista_virtual.model.Cita;
 import com.peluqueria.recepcionista_virtual.repository.CitaRepository;
 import com.peluqueria.recepcionista_virtual.repository.ClienteRepository;
 import com.peluqueria.recepcionista_virtual.repository.ServicioRepository;
@@ -432,8 +433,7 @@ public class StatsService {
             LocalDateTime limite24h = ahora.plusDays(1);
 
             // Citas en riesgo de no-show
-            List<Object> citasRiesgo = citaRepository.findCitasEnRiesgoDeNoShow(tenantId, limite24h);
-
+            List<Cita> citasRiesgo = citaRepository.findCitasEnRiesgoDeNoShow(tenantId, limite24h);
             if (!citasRiesgo.isEmpty()) {
                 Map<String, Object> alerta = new HashMap<>();
                 alerta.put("tipo", "no_show_risk");
