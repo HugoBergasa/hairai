@@ -34,90 +34,43 @@ public class CitaService {
     @Autowired
     private TwilioAIService twilioService;
 
-    // ✅ MÉTODO PRINCIPAL para crear cita desde IA - CON LOGGING DETALLADO
+    // ✅ MÉTODO PRINCIPAL para crear cita desde IA - MENSAJES DINÁMICOS
     public Cita crearCita(String tenantId, String telefono, DatosCita datos) {
         try {
-            System.out.println("🔍 [DEBUG] === INICIANDO CREACIÓN DE CITA ===");
-            System.out.println("🔍 [DEBUG] TenantId: " + tenantId);
-            System.out.println("🔍 [DEBUG] Teléfono: " + telefono);
-            System.out.println("🔍 [DEBUG] Datos: " + datos);
-
             // 1. Obtener el Tenant
-            System.out.println("🔍 [DEBUG] PASO 1: Buscando tenant...");
             Tenant tenant = tenantRepository.findById(tenantId)
                     .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
-            System.out.println("✅ [DEBUG] Tenant encontrado: " + tenant.getNombrePeluqueria());
 
-            // 2. Buscar o crear cliente - AQUÍ PUEDE ESTAR EL PROBLEMA
-            System.out.println("🔍 [DEBUG] PASO 2: Buscando cliente...");
-            System.out.println("🔍 [DEBUG] Ejecutando: clienteRepository.findByTelefonoAndTenantId(" + telefono + ", " + tenantId + ")");
-
-            Optional<Cliente> clienteExistente;
-            try {
-                clienteExistente = clienteRepository.findByTelefonoAndTenantId(telefono, tenantId);
-                System.out.println("✅ [DEBUG] Consulta cliente ejecutada - Presente: " + clienteExistente.isPresent());
-            } catch (Exception e) {
-                System.err.println("❌ [ERROR] Error en consulta cliente: " + e.getMessage());
-                e.printStackTrace();
-                throw e;
-            }
-
-            Cliente cliente;
-            if (clienteExistente.isPresent()) {
-                cliente = clienteExistente.get();
-                System.out.println("✅ [DEBUG] Cliente existente: " + cliente.getNombre() + " (ID: " + cliente.getId() + ")");
-            } else {
-                System.out.println("🔍 [DEBUG] Cliente no existe, creando nuevo...");
-                cliente = new Cliente();
-                cliente.setTenant(tenant);
-                cliente.setTelefono(telefono);
-                cliente.setNombre(datos.getNombreCliente() != null ? datos.getNombreCliente() : "Cliente");
-
-                try {
-                    cliente = clienteRepository.save(cliente);
-                    System.out.println("✅ [DEBUG] Nuevo cliente creado: " + cliente.getNombre() + " (ID: " + cliente.getId() + ")");
-                } catch (Exception e) {
-                    System.err.println("❌ [ERROR] Error guardando cliente: " + e.getMessage());
-                    e.printStackTrace();
-                    throw e;
-                }
-            }
+            // 2. Buscar o crear cliente
+            Cliente cliente = clienteRepository
+                    .findByTelefonoAndTenantId(telefono, tenantId)
+                    .orElseGet(() -> {
+                        Cliente nuevo = new Cliente();
+                        nuevo.setTenant(tenant);
+                        nuevo.setTelefono(telefono);
+                        nuevo.setNombre(datos.getNombreCliente() != null ?
+                                datos.getNombreCliente() : "Cliente");
+                        return clienteRepository.save(nuevo);
+                    });
 
             // 3. Buscar servicio
-            System.out.println("🔍 [DEBUG] PASO 3: Buscando servicio...");
             Servicio servicio = null;
             if (datos.getServicio() != null) {
-                System.out.println("🔍 [DEBUG] Ejecutando: servicioRepository.findByNombreContainingIgnoreCaseAndTenantId(" + datos.getServicio() + ", " + tenantId + ")");
-                try {
-                    List<Servicio> servicios = servicioRepository.findByNombreContainingIgnoreCaseAndTenantId(datos.getServicio(), tenantId);
-                    System.out.println("✅ [DEBUG] Servicios encontrados: " + servicios.size());
-                    if (!servicios.isEmpty()) {
-                        servicio = servicios.get(0);
-                        System.out.println("✅ [DEBUG] Servicio seleccionado: " + servicio.getNombre() + " (ID: " + servicio.getId() + ")");
-                    }
-                } catch (Exception e) {
-                    System.err.println("❌ [ERROR] Error buscando servicio: " + e.getMessage());
-                    e.printStackTrace();
-                    throw e;
+                List<Servicio> servicios = servicioRepository
+                        .findByNombreContainingIgnoreCaseAndTenantId(
+                                datos.getServicio(), tenantId);
+                if (!servicios.isEmpty()) {
+                    servicio = servicios.get(0);
                 }
             }
 
             // 4. Parsear fecha y hora
-            System.out.println("🔍 [DEBUG] PASO 4: Parseando fecha/hora...");
             LocalDateTime fechaHora = parsearFechaHora(datos.getFecha(), datos.getHora());
-            System.out.println("✅ [DEBUG] Fecha/hora: " + fechaHora);
 
             // 5. Buscar empleado disponible
-            System.out.println("🔍 [DEBUG] PASO 5: Buscando empleado...");
             Empleado empleado = buscarEmpleadoDisponible(tenantId, fechaHora);
-            if (empleado != null) {
-                System.out.println("✅ [DEBUG] Empleado asignado: " + empleado.getNombre() + " (ID: " + empleado.getId() + ")");
-            } else {
-                System.out.println("⚠️ [DEBUG] No se encontró empleado disponible");
-            }
 
             // 6. Crear la cita
-            System.out.println("🔍 [DEBUG] PASO 6: Creando objeto cita...");
             Cita cita = new Cita();
             cita.setTenant(tenant);
             cita.setCliente(cliente);
@@ -131,53 +84,18 @@ public class CitaService {
             if (servicio != null) {
                 cita.setDuracionMinutos(servicio.getDuracionMinutos());
                 cita.setPrecio(servicio.getPrecio());
-                System.out.println("✅ [DEBUG] Precio asignado: €" + servicio.getPrecio());
             }
 
-            System.out.println("🔍 [DEBUG] PASO 7: Guardando cita en BD...");
-            try {
-                Cita citaGuardada = citaRepository.save(cita);
-                System.out.println("✅ [DEBUG] Cita guardada exitosamente (ID: " + citaGuardada.getId() + ")");
+            Cita citaGuardada = citaRepository.save(cita);
 
-                // 7. ✅ ENVIAR SMS DE CONFIRMACIÓN PERSONALIZADO POR TENANT
-                System.out.println("🔍 [DEBUG] PASO 8: Enviando SMS...");
-                enviarConfirmacionPersonalizada(citaGuardada);
+            // 7. ✅ ENVIAR SMS DE CONFIRMACIÓN PERSONALIZADO POR TENANT
+            enviarConfirmacionPersonalizada(citaGuardada);
 
-                return citaGuardada;
-
-            } catch (Exception e) {
-                System.err.println("❌ [ERROR] Error guardando cita: " + e.getMessage());
-                e.printStackTrace();
-                throw e;
-            }
+            return citaGuardada;
 
         } catch (Exception e) {
-            System.err.println("❌ [ERROR] Error general en crearCita: " + e.getMessage());
-            e.printStackTrace();
             throw new RuntimeException("Error creando cita: " + e.getMessage(), e);
         }
-    }
-
-    // MÉTODO EMPLEADO CON LOGGING DETALLADO
-    private Empleado buscarEmpleadoDisponible(String tenantId, LocalDateTime fechaHora) {
-        try {
-            System.out.println("🔍 [DEBUG] Ejecutando: empleadoRepository.findByTenantIdAndActivoTrue(" + tenantId + ")");
-            List<Empleado> empleados = empleadoRepository.findByTenantIdAndActivoTrue(tenantId);
-            System.out.println("✅ [DEBUG] Empleados encontrados: " + empleados.size());
-
-            for (int i = 0; i < empleados.size(); i++) {
-                Empleado emp = empleados.get(i);
-                System.out.println("🔍 [DEBUG] Empleado " + (i+1) + ": " + emp.getNombre() + " (ID: " + emp.getId() + ", Activo: " + emp.getActivo() + ")");
-            }
-
-            if (!empleados.isEmpty()) {
-                return empleados.get(0);
-            }
-        } catch (Exception e) {
-            System.err.println("❌ [ERROR] Error en buscarEmpleadoDisponible: " + e.getMessage());
-            e.printStackTrace();
-        }
-        return null;
     }
 
     // MÉTODO LEGACY (mantener para compatibilidad)
@@ -248,6 +166,22 @@ public class CitaService {
         }
     }
 
+    private Empleado buscarEmpleadoDisponible(String tenantId, LocalDateTime fechaHora) {
+        try {
+            List<Empleado> empleados = empleadoRepository.findByTenantIdAndActivoTrue(tenantId);
+            if (!empleados.isEmpty()) {
+                // Por ahora, asignar el primer empleado disponible
+                return empleados.get(0);
+            }
+        } catch (Exception e) {
+            // Log pero continuar sin empleado
+        }
+        return null;
+    }
+
+    /**
+     * ✅ ENVIAR CONFIRMACIÓN PERSONALIZADA POR TENANT - NO MÁS HARDCODING
+     */
     private void enviarConfirmacionPersonalizada(Cita cita) {
         try {
             Tenant tenant = cita.getTenant();
@@ -270,6 +204,9 @@ public class CitaService {
         }
     }
 
+    /**
+     * ✅ CANCELAR CITA CON MENSAJE PERSONALIZADO POR TENANT
+     */
     public void cancelarCita(String citaId) {
         Cita cita = citaRepository.findById(citaId)
                 .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
@@ -287,6 +224,9 @@ public class CitaService {
         twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
     }
 
+    /**
+     * ✅ ENVIAR RECORDATORIO PERSONALIZADO POR TENANT
+     */
     public void enviarRecordatorio(Cita cita) {
         try {
             if (cita.getRecordatorioEnviado()) {
