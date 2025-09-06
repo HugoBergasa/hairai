@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 @Repository
-public interface ServicioRepository extends JpaRepository<Servicio, Long> {
+public interface ServicioRepository extends JpaRepository<Servicio, String> { // ✅ CORREGIDO: String en lugar de Long
 
     // Buscar servicios por tenant
     List<Servicio> findByTenant(Tenant tenant);
@@ -23,17 +23,18 @@ public interface ServicioRepository extends JpaRepository<Servicio, Long> {
     Servicio findByNombreAndTenant(String nombre, Tenant tenant);
 
     /**
-     * Encuentra servicios por tenant como mapas para el prompt de IA
-     * Nota: Usamos la columna 'duracion' que es el nombre real en la BD
+     * ✅ MÉTODO CLAVE - Encuentra servicios por tenant como mapas para el prompt de IA
+     * Este método será usado por OpenAIService para construir prompts dinámicos
      */
-    @Query(value = "SELECT s.id, s.nombre, s.descripcion, s.duracion, s.precio, s.activo " +
+    @Query(value = "SELECT s.id, s.nombre, s.descripcion, s.duracion_minutos, s.precio, s.activo " +
             "FROM servicios s " +
             "WHERE s.tenant_id = :tenantId AND s.activo = true",
             nativeQuery = true)
     List<Map<String, Object>> findServiciosByTenantId(@Param("tenantId") String tenantId);
 
     /**
-     * Método alternativo usando JPQL en lugar de SQL nativo
+     * ✅ MÉTODO ALTERNATIVO - JPQL más limpio
+     * Será usado por OpenAIService para obtener servicios estructurados
      */
     @Query("SELECT s FROM Servicio s WHERE s.tenant.id = :tenantId AND s.activo = true")
     List<Servicio> findActivosByTenantId(@Param("tenantId") String tenantId);
@@ -46,6 +47,4 @@ public interface ServicioRepository extends JpaRepository<Servicio, Long> {
 
     @Query("SELECT s FROM Servicio s WHERE LOWER(s.nombre) LIKE LOWER(CONCAT('%', :nombre, '%')) AND s.tenant.id = :tenantId")
     List<Servicio> findByNombreContainingIgnoreCaseAndTenantId(String nombre, String tenantId);
-
-
 }

@@ -3,7 +3,9 @@ package com.peluqueria.recepcionista_virtual.service;
 import com.peluqueria.recepcionista_virtual.dto.DatosCita;
 import com.peluqueria.recepcionista_virtual.dto.OpenAIResponse;
 import com.peluqueria.recepcionista_virtual.model.Tenant;
+import com.peluqueria.recepcionista_virtual.model.Servicio;
 import com.peluqueria.recepcionista_virtual.repository.TenantRepository;
+import com.peluqueria.recepcionista_virtual.repository.ServicioRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,10 +31,13 @@ public class OpenAIService {
     @Autowired
     private TenantRepository tenantRepository;
 
+    @Autowired
+    private ServicioRepository servicioRepository; // ✅ AGREGADO: Para consultas dinámicas
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * PROCESAMIENTO INTELIGENTE - GPT-4 COMO CEREBRO
+     * ✅ PROCESAMIENTO INTELIGENTE - GPT-4 COMO CEREBRO PERSONALIZADO POR TENANT
      */
     public OpenAIResponse procesarMensaje(String mensaje, String tenantId, String callSid) {
         try {
@@ -41,7 +46,7 @@ public class OpenAIService {
             // 1. VALIDAR API KEY
             if (apiKey == null || apiKey.equals("sk-dummy") || apiKey.startsWith("sk-proj-tu-clave")) {
                 logger.warn("OpenAI API Key no configurada - usando respuesta mock");
-                return crearRespuestaMock(mensaje);
+                return crearRespuestaMock(mensaje, tenantId);
             }
 
             // 2. OBTENER CONTEXTO COMPLETO DEL TENANT
@@ -51,8 +56,8 @@ public class OpenAIService {
                 return crearRespuestaError("Tenant no encontrado");
             }
 
-            // 3. CONSTRUIR PROMPT PERSONALIZADO CON CONTEXTO DEL NEGOCIO
-            String systemPrompt = construirPromptPersonalizado(tenant);
+            // 3. ✅ CONSTRUIR PROMPT PERSONALIZADO CON SERVICIOS DINÁMICOS DESDE BD
+            String systemPrompt = construirPromptPersonalizadoDinamico(tenant);
 
             // 4. LLAMAR A GPT-4 CON CONTEXTO COMPLETO
             HttpHeaders headers = new HttpHeaders();
@@ -60,7 +65,7 @@ public class OpenAIService {
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             Map<String, Object> requestBody = Map.of(
-                    "model", "gpt-4",
+                    "model", "gpt-4-turbo", // ✅ Usar GPT-4 Turbo que soporta JSON
                     "messages", List.of(
                             Map.of("role", "system", "content", systemPrompt),
                             Map.of("role", "user", "content", mensaje)
@@ -89,9 +94,12 @@ public class OpenAIService {
     }
 
     /**
-     * CONSTRUIR PROMPT PERSONALIZADO POR TENANT
+     * ✅ CONSTRUIR PROMPT PERSONALIZADO CON SERVICIOS DINÁMICOS DESDE BD
      */
-    private String construirPromptPersonalizado(Tenant tenant) {
+    private String construirPromptPersonalizadoDinamico(Tenant tenant) {
+        // ✅ OBTENER SERVICIOS REALES DESDE BD POR TENANT
+        String serviciosDisponibles = construirServiciosDesdeDB(tenant.getId());
+
         return String.format("""
             Eres la recepcionista virtual de %s.
             
@@ -100,12 +108,9 @@ public class OpenAIService {
             - Horarios: %s a %s
             - Días laborables: %s
             - Duración por cita: %d minutos
+            - Teléfono: %s
             
-            SERVICIOS DISPONIBLES:
-            - Corte básico (30 min, €20)
-            - Peinado (45 min, €35)  
-            - Tinte (90 min, €50)
-            - Manicura (30 min, €25)
+            %s
             
             INSTRUCCIONES CRÍTICAS:
             1. Sé amable y profesional
@@ -137,8 +142,43 @@ public class OpenAIService {
                 tenant.getHoraApertura(),
                 tenant.getHoraCierre(),
                 tenant.getDiasLaborables(),
-                tenant.getDuracionCitaMinutos()
+                tenant.getDuracionCitaMinutos(),
+                tenant.getTelefono() != null ? tenant.getTelefono() : "No especificado",
+                serviciosDisponibles
         );
+    }
+
+    /**
+     * ✅ CONSTRUIR SERVICIOS DINÁMICOS DESDE BD - CADA TENANT SUS PROPIOS SERVICIOS
+     */
+    private String construirServiciosDesdeDB(String tenantId) {
+        try {
+            List<Servicio> servicios = servicioRepository.findActivosByTenantId(tenantId);
+
+            if (servicios.isEmpty()) {
+                logger.warn("No hay servicios activos para tenant: {}", tenantId);
+                return "SERVICIOS DISPONIBLES:\n- Consultar servicios disponibles";
+            }
+
+            StringBuilder serviciosStr = new StringBuilder("SERVICIOS DISPONIBLES:\n");
+
+            for (Servicio servicio : servicios) {
+                serviciosStr.append(String.format(
+                        "- %s (%d min, €%.2f)%s\n",
+                        servicio.getNombre(),
+                        servicio.getDuracionMinutos(),
+                        servicio.getPrecio(),
+                        servicio.getDescripcion() != null ? " - " + servicio.getDescripcion() : ""
+                ));
+            }
+
+            logger.info("Servicios construidos para tenant {}: {} servicios", tenantId, servicios.size());
+            return serviciosStr.toString();
+
+        } catch (Exception e) {
+            logger.error("Error construyendo servicios para tenant {}: {}", tenantId, e.getMessage());
+            return "SERVICIOS DISPONIBLES:\n- Error cargando servicios. Consulte disponibilidad.";
+        }
     }
 
     /**
@@ -193,24 +233,26 @@ public class OpenAIService {
     }
 
     /**
-     * CREAR RESPUESTA MOCK PARA TESTING SIN API KEY
+     * ✅ CREAR RESPUESTA MOCK PERSONALIZADA POR TENANT
      */
-    private OpenAIResponse crearRespuestaMock(String mensaje) {
+    private OpenAIResponse crearRespuestaMock(String mensaje, String tenantId) {
         OpenAIResponse respuesta = new OpenAIResponse();
+
+        // ✅ Obtener servicios reales para el mock también
+        String serviciosInfo = construirServiciosDesdeDB(tenantId);
 
         if (mensaje.toLowerCase().contains("cita") ||
                 mensaje.toLowerCase().contains("reservar") ||
                 mensaje.toLowerCase().contains("agendar")) {
 
             respuesta.setMensaje("Perfecto, entiendo que quiere reservar una cita. " +
-                    "¿Para qué servicio sería? Tenemos corte, peinado, tinte y manicura.");
+                    "¿Para qué servicio sería? " + serviciosInfo);
             respuesta.setIntencion("RESERVAR_CITA");
             respuesta.setRequiereAccion(true);
             respuesta.setAccion("CREAR_CITA");
 
             // Mock de datos de cita parciales
             DatosCita datosCita = new DatosCita();
-            datosCita.setServicio("corte");
             datosCita.setFecha("mañana");
             datosCita.setHora("10:00");
             datosCita.setNombreCliente("Cliente");
@@ -218,7 +260,7 @@ public class OpenAIService {
 
         } else {
             respuesta.setMensaje("Hola, gracias por contactar con nosotros. " +
-                    "¿En qué puedo ayudarle hoy?");
+                    "¿En qué puedo ayudarle hoy? " + serviciosInfo);
             respuesta.setIntencion("CONSULTAR_INFO");
             respuesta.setRequiereAccion(false);
             respuesta.setAccion("NINGUNA");

@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
@@ -33,7 +34,7 @@ public class CitaService {
     @Autowired
     private TwilioAIService twilioService;
 
-    // MÉTODO PRINCIPAL para crear cita desde IA
+    // ✅ MÉTODO PRINCIPAL para crear cita desde IA - MENSAJES DINÁMICOS
     public Cita crearCita(String tenantId, String telefono, DatosCita datos) {
         try {
             // 1. Obtener el Tenant
@@ -45,7 +46,7 @@ public class CitaService {
                     .findByTelefonoAndTenantId(telefono, tenantId)
                     .orElseGet(() -> {
                         Cliente nuevo = new Cliente();
-                        nuevo.setTenant(tenant); // Usar objeto Tenant
+                        nuevo.setTenant(tenant);
                         nuevo.setTelefono(telefono);
                         nuevo.setNombre(datos.getNombreCliente() != null ?
                                 datos.getNombreCliente() : "Cliente");
@@ -71,7 +72,7 @@ public class CitaService {
 
             // 6. Crear la cita
             Cita cita = new Cita();
-            cita.setTenant(tenant); // Usar objeto Tenant
+            cita.setTenant(tenant);
             cita.setCliente(cliente);
             cita.setServicio(servicio);
             cita.setEmpleado(empleado);
@@ -87,8 +88,8 @@ public class CitaService {
 
             Cita citaGuardada = citaRepository.save(cita);
 
-            // 7. Enviar SMS de confirmación
-            enviarConfirmacion(citaGuardada);
+            // 7. ✅ ENVIAR SMS DE CONFIRMACIÓN PERSONALIZADO POR TENANT
+            enviarConfirmacionPersonalizada(citaGuardada);
 
             return citaGuardada;
 
@@ -121,7 +122,7 @@ public class CitaService {
         cita.setOrigen(OrigenCita.TELEFONO);
 
         Cita citaGuardada = citaRepository.save(cita);
-        enviarConfirmacion(citaGuardada);
+        enviarConfirmacionPersonalizada(citaGuardada); // ✅ Usar método personalizado
 
         return citaGuardada;
     }
@@ -180,18 +181,84 @@ public class CitaService {
         return null;
     }
 
-    private void enviarConfirmacion(Cita cita) {
+    /**
+     * ✅ ENVIAR CONFIRMACIÓN PERSONALIZADA POR TENANT - NO MÁS HARDCODING
+     */
+    private void enviarConfirmacionPersonalizada(Cita cita) {
         try {
+            Tenant tenant = cita.getTenant();
+            DateTimeFormatter fechaFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            DateTimeFormatter horaFormatter = DateTimeFormatter.ofPattern("HH:mm");
+
+            // ✅ MENSAJE PERSONALIZADO CON DATOS REALES DEL TENANT
             String mensaje = String.format(
-                    "✅ Cita confirmada para el %s a las %s. " +
-                            "Para cancelar responda CANCELAR. Peluquería Style",
-                    cita.getFechaHora().toLocalDate(),
-                    cita.getFechaHora().toLocalTime()
+                    "✅ Cita confirmada en %s para el %s a las %s.%s Para cancelar responda CANCELAR. %s",
+                    tenant.getNombrePeluqueria(),
+                    cita.getFechaHora().format(fechaFormatter),
+                    cita.getFechaHora().format(horaFormatter),
+                    cita.getServicio() != null ? " Servicio: " + cita.getServicio().getNombre() + "." : "",
+                    tenant.getTelefono() != null ? "Info: " + tenant.getTelefono() : ""
             );
 
             twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
+
         } catch (Exception e) {
-            // Log pero no fallar
+            // Log pero no fallar la creación de cita
+            System.err.println("Error enviando SMS de confirmación: " + e.getMessage());
+        }
+    }
+
+    /**
+     * ✅ CANCELAR CITA CON MENSAJE PERSONALIZADO POR TENANT
+     */
+    public void cancelarCita(String citaId) {
+        Cita cita = citaRepository.findById(citaId)
+                .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
+
+        cita.setEstado(EstadoCita.CANCELADA);
+        citaRepository.save(cita);
+
+        // ✅ MENSAJE DE CANCELACIÓN PERSONALIZADO
+        Tenant tenant = cita.getTenant();
+        String mensaje = String.format(
+                "❌ Su cita en %s ha sido cancelada. Para reagendar%s visite nuestras instalaciones.",
+                tenant.getNombrePeluqueria(),
+                tenant.getTelefono() != null ? " llame al " + tenant.getTelefono() + " o" : ""
+        );
+
+        twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
+    }
+
+    /**
+     * ✅ ENVIAR RECORDATORIO PERSONALIZADO POR TENANT
+     */
+    public void enviarRecordatorio(Cita cita) {
+        try {
+            if (cita.getRecordatorioEnviado()) {
+                return; // Ya se envió
+            }
+
+            Tenant tenant = cita.getTenant();
+            DateTimeFormatter fechaFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            DateTimeFormatter horaFormatter = DateTimeFormatter.ofPattern("HH:mm");
+
+            String mensaje = String.format(
+                    "🔔 Recordatorio: Tiene cita en %s mañana %s a las %s.%s %s",
+                    tenant.getNombrePeluqueria(),
+                    cita.getFechaHora().format(fechaFormatter),
+                    cita.getFechaHora().format(horaFormatter),
+                    cita.getServicio() != null ? " Servicio: " + cita.getServicio().getNombre() + "." : "",
+                    tenant.getTelefono() != null ? "Info: " + tenant.getTelefono() : ""
+            );
+
+            twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
+
+            // Marcar recordatorio como enviado
+            cita.setRecordatorioEnviado(true);
+            citaRepository.save(cita);
+
+        } catch (Exception e) {
+            System.err.println("Error enviando recordatorio: " + e.getMessage());
         }
     }
 
@@ -202,18 +269,5 @@ public class CitaService {
         return citaRepository.findByTenantIdAndFechaHoraBetween(
                 tenantId, inicio, fin
         );
-    }
-
-    public void cancelarCita(String citaId) {
-        Cita cita = citaRepository.findById(citaId)
-                .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
-
-        cita.setEstado(EstadoCita.CANCELADA);
-        citaRepository.save(cita);
-
-        String mensaje = "❌ Su cita ha sido cancelada. " +
-                "Para reagendar llame al 900-123-456";
-
-        twilioService.enviarSMS(cita.getCliente().getTelefono(), mensaje);
     }
 }

@@ -2,6 +2,8 @@ package com.peluqueria.recepcionista_virtual.controller;
 
 import com.peluqueria.recepcionista_virtual.dto.OpenAIResponse;
 import com.peluqueria.recepcionista_virtual.service.*;
+import com.peluqueria.recepcionista_virtual.model.Cliente;
+import com.peluqueria.recepcionista_virtual.repository.ClienteRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -20,12 +22,14 @@ public class TwilioController {
     @Autowired
     private CitaService citaService;
 
+    @Autowired
+    private ClienteRepository clienteRepository; // ✅ AGREGADO: Para mapear teléfono → tenant
+
     @Value("${default.tenant.id:tenant_demo_001}")
     private String defaultTenantId;
 
     /**
-     * 🚨 ENDPOINT FALTANTE - Causa del error 500
-     * Este es el webhook que Twilio está llamando
+     * ✅ WEBHOOK PRINCIPAL - CON MAPEO DINÁMICO DE TENANT
      */
     @PostMapping(value = "/webhook",
             consumes = "application/x-www-form-urlencoded",
@@ -45,23 +49,78 @@ public class TwilioController {
                 return ResponseEntity.ok(generarTwiMLError("Datos incompletos"));
             }
 
-            // DETERMINAR TENANT_ID (por ahora usar default)
-            String tenantId = defaultTenantId;
-            log.info("Usando tenant: {} para número: {}", tenantId, to);
+            // ✅ DETERMINAR TENANT_ID DINÁMICAMENTE POR TELÉFONO
+            String tenantId = determinarTenantId(from, to);
+            log.info("✅ Tenant determinado: {} para llamada desde: {} hacia: {}", tenantId, from, to);
 
-            // RESPUESTA BÁSICA DE PRUEBA (sin IA por ahora)
-            String mensaje = "Hola, gracias por contactar con nosotros. " +
-                    "Su mensaje ha sido recibido correctamente. " +
-                    "Un momento, por favor.";
+            // ✅ PROCESAR CON OPENAI PERSONALIZADO POR TENANT
+            OpenAIResponse respuestaIA = openAIService.procesarMensaje(
+                    body != null ? body : "Hola",
+                    tenantId,
+                    callSid
+            );
+
+            String mensaje = respuestaIA.getMensaje();
+            log.info("🤖 IA responde para tenant {}: {}", tenantId, mensaje);
+
+            // Si la IA detectó que hay que crear una cita
+            if ("CREAR_CITA".equals(respuestaIA.getAccion()) &&
+                    respuestaIA.getDatosCita() != null &&
+                    respuestaIA.getDatosCita().isCompleto()) {
+
+                try {
+                    citaService.crearCita(tenantId, from, respuestaIA.getDatosCita());
+                    mensaje += " He confirmado su cita. Recibirá un SMS de confirmación.";
+                    log.info("✅ Cita creada exitosamente para tenant: {}", tenantId);
+                } catch (Exception e) {
+                    log.error("❌ Error creando cita para tenant {}: {}", tenantId, e.getMessage());
+                    mensaje += " Hubo un problema al confirmar la cita. Por favor, inténtelo de nuevo.";
+                }
+            }
 
             String twimlResponse = generarTwiMLBasico(mensaje);
-            log.info("Respuesta TwiML generada exitosamente");
+            log.info("📞 Respuesta TwiML generada exitosamente para tenant: {}", tenantId);
 
             return ResponseEntity.ok(twimlResponse);
 
         } catch (Exception e) {
             log.error("❌ ERROR en webhook Twilio: ", e);
             return ResponseEntity.ok(generarTwiMLError("Error técnico temporal"));
+        }
+    }
+
+    /**
+     * ✅ DETERMINAR TENANT ID DINÁMICAMENTE
+     * 1. Buscar cliente existente por teléfono → obtener su tenant
+     * 2. Si no existe, usar tenant por defecto (o por número destino en futuro)
+     */
+    private String determinarTenantId(String telefonoFrom, String telefonoTo) {
+        try {
+            // ESTRATEGIA 1: Buscar cliente existente por teléfono
+            List<Cliente> clientes = clienteRepository.findAll();
+            for (Cliente cliente : clientes) {
+                if (telefonoFrom.equals(cliente.getTelefono())) {
+                    String tenantId = cliente.getTenant().getId();
+                    log.info("👤 Cliente encontrado - Tenant: {} para teléfono: {}", tenantId, telefonoFrom);
+                    return tenantId;
+                }
+            }
+
+            // ESTRATEGIA 2: Mapeo por número de teléfono destino (futuro)
+            // TODO: Implementar mapeo por número Twilio → tenant
+            // Map<String, String> phoneToTenant = Map.of(
+            //     "+16084707975", "tenant_demo_001",
+            //     "+15551234567", "tenant_salon_madrid"
+            // );
+            // return phoneToTenant.getOrDefault(telefonoTo, defaultTenantId);
+
+            // ESTRATEGIA 3: Usar tenant por defecto para clientes nuevos
+            log.info("🆕 Cliente nuevo - usando tenant por defecto: {} para teléfono: {}", defaultTenantId, telefonoFrom);
+            return defaultTenantId;
+
+        } catch (Exception e) {
+            log.error("❌ Error determinando tenant, usando por defecto: {}", e.getMessage());
+            return defaultTenantId;
         }
     }
 
@@ -88,7 +147,7 @@ public class TwilioController {
                 "</Response>";
     }
 
-    // ===== ENDPOINTS EXISTENTES (mantener tal como están) =====
+    // ===== ENDPOINTS EXISTENTES CON MEJORAS MULTI-TENANT =====
 
     @PostMapping(value = "/voice", produces = "application/xml; charset=UTF-8")
     public String handleIncomingCall(@RequestParam Map<String, String> params) {
@@ -97,12 +156,15 @@ public class TwilioController {
 
         log.info("📞 Nueva llamada de: {} - CallSid: {}", from, callSid);
 
+        // ✅ Determinar tenant para personalizar saludo
+        String tenantId = determinarTenantId(from, params.get("To"));
+
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
                 "<Response>" +
                 "<Gather input=\"speech\" action=\"/api/twilio/process-speech\" " +
                 "method=\"POST\" language=\"es-ES\" speechTimeout=\"auto\">" +
                 "<Say language=\"es-ES\" voice=\"Polly.Conchita\">" +
-                "Hola, bienvenido a Peluquería Style. Soy su asistente virtual. " +
+                "Hola, bienvenido. Soy su asistente virtual. " +
                 "¿Cómo puedo ayudarle?" +
                 "</Say>" +
                 "</Gather>" +
@@ -114,19 +176,23 @@ public class TwilioController {
         String speechResult = params.get("SpeechResult");
         String callSid = params.get("CallSid");
         String from = params.get("From");
+        String to = params.get("To");
 
         log.info("🎤 Usuario dijo: {}", speechResult);
 
         try {
-            // USAR OpenAIService EXISTENTE (cuando esté completo)
+            // ✅ DETERMINAR TENANT DINÁMICAMENTE
+            String tenantId = determinarTenantId(from, to);
+
+            // ✅ USAR OpenAIService PERSONALIZADO POR TENANT
             OpenAIResponse respuestaIA = openAIService.procesarMensaje(
                     speechResult,
-                    defaultTenantId,
+                    tenantId,
                     callSid
             );
 
             String mensaje = respuestaIA.getMensaje();
-            log.info("🤖 IA responde: {}", mensaje);
+            log.info("🤖 IA responde para tenant {}: {}", tenantId, mensaje);
 
             // Si la IA detectó que hay que crear una cita
             if ("CREAR_CITA".equals(respuestaIA.getAccion()) &&
@@ -134,11 +200,7 @@ public class TwilioController {
                     respuestaIA.getDatosCita().isCompleto()) {
 
                 try {
-                    citaService.crearCita(
-                            defaultTenantId,
-                            from,
-                            respuestaIA.getDatosCita()
-                    );
+                    citaService.crearCita(tenantId, from, respuestaIA.getDatosCita());
                     mensaje += " He confirmado su cita. Recibirá un SMS de confirmación.";
                 } catch (Exception e) {
                     log.error("Error creando cita", e);
@@ -175,13 +237,19 @@ public class TwilioController {
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>";
     }
 
+    /**
+     * ✅ ENDPOINT DE TESTING MEJORADO - MULTI-TENANT
+     */
     @GetMapping("/test")
     @ResponseBody
-    public Map<String, Object> test() {
+    public Map<String, Object> test(@RequestParam(defaultValue = "") String tenantId) {
         try {
+            // Usar tenant específico o por defecto
+            String testTenantId = tenantId.isEmpty() ? defaultTenantId : tenantId;
+
             OpenAIResponse test = openAIService.procesarMensaje(
                     "Hola, quiero una cita",
-                    defaultTenantId,
+                    testTenantId,
                     "test-" + System.currentTimeMillis()
             );
 
@@ -189,13 +257,37 @@ public class TwilioController {
                     "status", "OK",
                     "openai_connected", true,
                     "response", test.getMensaje(),
-                    "tenant", defaultTenantId
+                    "tenant_used", testTenantId,
+                    "mapping_strategy", "dynamic_by_phone"
             );
         } catch (Exception e) {
             return Map.of(
                     "status", "ERROR",
                     "error", e.getMessage(),
-                    "tenant", defaultTenantId
+                    "tenant_used", tenantId.isEmpty() ? defaultTenantId : tenantId
+            );
+        }
+    }
+
+    /**
+     * ✅ NUEVO ENDPOINT - TESTING MAPEO DE TENANT
+     */
+    @GetMapping("/test-tenant-mapping")
+    @ResponseBody
+    public Map<String, Object> testTenantMapping(@RequestParam String telefono) {
+        try {
+            String tenantId = determinarTenantId(telefono, null);
+
+            return Map.of(
+                    "telefono", telefono,
+                    "tenant_mapped", tenantId,
+                    "strategy", "cliente_lookup",
+                    "fallback", defaultTenantId
+            );
+        } catch (Exception e) {
+            return Map.of(
+                    "error", e.getMessage(),
+                    "telefono", telefono
             );
         }
     }
