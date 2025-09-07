@@ -40,20 +40,16 @@ public class LogLlamadaService {
     }
 
     /**
-     * Obtener llamadas por estado
+     * Obtener llamadas por estado - CORREGIDO: usar String
      */
-    public List<LogLlamada> getLlamadasByEstado(
-            String tenantId,
-            LogLlamada.EstadoLlamada estado) {
+    public List<LogLlamada> getLlamadasByEstado(String tenantId, String estado) {
         return logLlamadaRepository.findByTenantIdAndEstadoOrderByFechaInicioDesc(tenantId, estado);
     }
 
     /**
-     * Obtener llamadas por dirección (entrantes/salientes)
+     * Obtener llamadas por dirección (entrantes/salientes) - CORREGIDO: usar String
      */
-    public List<LogLlamada> getLlamadasByDireccion(
-            String tenantId,
-            LogLlamada.DireccionLlamada direccion) {
+    public List<LogLlamada> getLlamadasByDireccion(String tenantId, String direccion) {
         return logLlamadaRepository.findByTenantIdAndDireccionOrderByFechaInicioDesc(tenantId, direccion);
     }
 
@@ -76,23 +72,23 @@ public class LogLlamadaService {
     }
 
     /**
-     * Crear nueva llamada
+     * Crear nueva llamada - CORREGIDO: usar String para dirección
      */
     public LogLlamada crearLlamada(
             String tenantId,
             String callSid,
             String numeroOrigen,
             String numeroDestino,
-            LogLlamada.DireccionLlamada direccion) {
+            String direccion) {
 
         LogLlamada logLlamada = new LogLlamada();
         logLlamada.setTenantId(tenantId);
         logLlamada.setCallSid(callSid);
         logLlamada.setNumeroOrigen(numeroOrigen);
         logLlamada.setNumeroDestino(numeroDestino);
-        logLlamada.setDireccion(direccion);
+        logLlamada.setDireccion(direccion);  // String directo
         logLlamada.setFechaInicio(LocalDateTime.now());
-        logLlamada.setEstado(LogLlamada.EstadoLlamada.INICIADA);
+        logLlamada.setEstado("INICIADA");    // String directo
 
         return logLlamadaRepository.save(logLlamada);
     }
@@ -101,19 +97,22 @@ public class LogLlamadaService {
      * Guardar o actualizar llamada
      */
     public LogLlamada guardarLlamada(LogLlamada logLlamada) {
+        if (logLlamada.getId() == null) {
+            logLlamada.setId(java.util.UUID.randomUUID().toString());
+        }
         return logLlamadaRepository.save(logLlamada);
     }
 
     /**
-     * Actualizar estado de llamada
+     * Actualizar estado de llamada - CORREGIDO: usar String para estado
      */
-    public LogLlamada actualizarEstado(String callSid, String tenantId, LogLlamada.EstadoLlamada nuevoEstado) {
+    public LogLlamada actualizarEstado(String callSid, String tenantId, String nuevoEstado) {
         LogLlamada llamada = logLlamadaRepository.findByCallSidAndTenantId(callSid, tenantId);
         if (llamada != null) {
-            llamada.setEstado(nuevoEstado);
-            if (nuevoEstado == LogLlamada.EstadoLlamada.COMPLETADA ||
-                    nuevoEstado == LogLlamada.EstadoLlamada.FALLIDA ||
-                    nuevoEstado == LogLlamada.EstadoLlamada.ABANDONADA) {
+            llamada.setEstado(nuevoEstado);  // String directo
+            if ("COMPLETADA".equals(nuevoEstado) ||
+                    "FALLIDA".equals(nuevoEstado) ||
+                    "ABANDONADA".equals(nuevoEstado)) {
                 llamada.finalizarLlamada();
             }
             return logLlamadaRepository.save(llamada);
@@ -146,12 +145,12 @@ public class LogLlamadaService {
     }
 
     /**
-     * Vincular llamada con cita creada
+     * Vincular llamada con cita creada - CORREGIDO: usar String para citaId
      */
-    public LogLlamada vincularConCita(String callSid, String tenantId, Long citaId) {
+    public LogLlamada vincularConCita(String callSid, String tenantId, String citaId) {
         LogLlamada llamada = logLlamadaRepository.findByCallSidAndTenantId(callSid, tenantId);
         if (llamada != null) {
-            llamada.setCitaCreadaId(citaId);
+            llamada.setCitaCreadaId(citaId);  // String directo
             return logLlamadaRepository.save(llamada);
         }
         return null;
@@ -165,15 +164,15 @@ public class LogLlamadaService {
     }
 
     public Long getLlamadasEntrantes(String tenantId) {
-        return logLlamadaRepository.countByTenantIdAndDireccion(tenantId, LogLlamada.DireccionLlamada.ENTRANTE);
+        return logLlamadaRepository.countByTenantIdAndDireccion(tenantId, "entrante");
     }
 
     public Long getLlamadasSalientes(String tenantId) {
-        return logLlamadaRepository.countByTenantIdAndDireccion(tenantId, LogLlamada.DireccionLlamada.SALIENTE);
+        return logLlamadaRepository.countByTenantIdAndDireccion(tenantId, "saliente");
     }
 
     public Long getLlamadasCompletadas(String tenantId) {
-        return logLlamadaRepository.countByTenantIdAndEstado(tenantId, LogLlamada.EstadoLlamada.COMPLETADA);
+        return logLlamadaRepository.countByTenantIdAndEstado(tenantId, "COMPLETADA");
     }
 
     public Long getLlamadasConCitaCreada(String tenantId) {
@@ -203,19 +202,61 @@ public class LogLlamadaService {
     }
 
     /**
-     * Buscar llamada por ID (verificando tenant)
+     * Buscar llamada por ID (verificando tenant) - CORREGIDO: usar String como en el modelo
      */
-    public LogLlamada getLlamadaById(Long id, String tenantId) {
+    public LogLlamada getLlamadaById(String id, String tenantId) {
         return logLlamadaRepository.findByIdAndTenantId(id, tenantId);
     }
 
     /**
-     * Eliminar llamada (verificando tenant)
+     * Eliminar llamada (verificando tenant) - CORREGIDO: usar String como en el modelo
      */
-    public void eliminarLlamada(Long id, String tenantId) {
+    public void eliminarLlamada(String id, String tenantId) {
         LogLlamada llamada = logLlamadaRepository.findByIdAndTenantId(id, tenantId);
         if (llamada != null) {
             logLlamadaRepository.delete(llamada);
         }
+    }
+
+    /**
+     * Métodos adicionales usando los enums helper para mayor flexibilidad
+     */
+
+    /**
+     * Crear llamada usando enum de dirección
+     */
+    public LogLlamada crearLlamadaConEnum(
+            String tenantId,
+            String callSid,
+            String numeroOrigen,
+            String numeroDestino,
+            LogLlamada.DireccionLlamada direccionEnum) {
+
+        return crearLlamada(tenantId, callSid, numeroOrigen, numeroDestino,
+                direccionEnum.name().toLowerCase());
+    }
+
+    /**
+     * Actualizar estado usando enum
+     */
+    public LogLlamada actualizarEstadoConEnum(String callSid, String tenantId,
+                                              LogLlamada.EstadoLlamada estadoEnum) {
+        return actualizarEstado(callSid, tenantId, estadoEnum.name());
+    }
+
+    /**
+     * Obtener llamadas por estado usando enum
+     */
+    public List<LogLlamada> getLlamadasByEstadoEnum(String tenantId,
+                                                    LogLlamada.EstadoLlamada estadoEnum) {
+        return getLlamadasByEstado(tenantId, estadoEnum.name());
+    }
+
+    /**
+     * Obtener llamadas por dirección usando enum
+     */
+    public List<LogLlamada> getLlamadasByDireccionEnum(String tenantId,
+                                                       LogLlamada.DireccionLlamada direccionEnum) {
+        return getLlamadasByDireccion(tenantId, direccionEnum.name().toLowerCase());
     }
 }

@@ -65,6 +65,9 @@ public class ConversacionIAService {
         if (conversacion.getTimestamp() == null) {
             conversacion.setTimestamp(LocalDateTime.now());
         }
+        if (conversacion.getId() == null) {
+            conversacion.setId(java.util.UUID.randomUUID().toString());
+        }
         return conversacionIARepository.save(conversacion);
     }
 
@@ -82,8 +85,10 @@ public class ConversacionIAService {
         conversacion.setTenantId(tenantId);
         conversacion.setCallSid(callSid);
         conversacion.setMensajeUsuario(mensajeUsuario);
+        conversacion.setMensajeCliente(mensajeUsuario); // Para compatibilidad BD
         conversacion.setRespuestaIA(respuestaIA);
         conversacion.setCanal(canal);
+        conversacion.setTipo(canal.name().toLowerCase());
         conversacion.setTimestamp(LocalDateTime.now());
         conversacion.setExitoso(true);
 
@@ -106,16 +111,16 @@ public class ConversacionIAService {
     }
 
     /**
-     * Buscar conversación por ID (verificando tenant)
+     * Buscar conversación por ID (verificando tenant) - CORREGIDO: String ID
      */
-    public ConversacionIA getConversacionById(Long id, String tenantId) {
+    public ConversacionIA getConversacionById(String id, String tenantId) {
         return conversacionIARepository.findByIdAndTenantId(id, tenantId);
     }
 
     /**
-     * Eliminar conversación (verificando tenant)
+     * Eliminar conversación (verificando tenant) - CORREGIDO: String ID
      */
-    public void eliminarConversacion(Long id, String tenantId) {
+    public void eliminarConversacion(String id, String tenantId) {
         ConversacionIA conversacion = conversacionIARepository.findByIdAndTenantId(id, tenantId);
         if (conversacion != null) {
             conversacionIARepository.delete(conversacion);
