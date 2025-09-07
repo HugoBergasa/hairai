@@ -4,6 +4,8 @@ import com.peluqueria.recepcionista_virtual.model.LogLlamada;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -13,6 +15,7 @@ import java.util.Optional;
 @Repository
 public interface LogLlamadaRepository extends JpaRepository<LogLlamada, Long> {
 
+    // ===== MÉTODOS EXISTENTES =====
     Optional<LogLlamada> findByCallSid(String callSid);
 
     List<LogLlamada> findByTenantId(String tenantId);
@@ -41,4 +44,73 @@ public interface LogLlamadaRepository extends JpaRepository<LogLlamada, Long> {
             @Param("tenantId") String tenantId,
             @Param("numeroOrigen") String numeroOrigen
     );
+
+    // ===== MÉTODOS AGREGADOS PARA EL SERVICE =====
+
+    // Métodos con ordenamiento
+    List<LogLlamada> findByTenantIdOrderByFechaInicioDesc(String tenantId);
+
+    Page<LogLlamada> findByTenantIdOrderByFechaInicioDesc(String tenantId, Pageable pageable);
+
+    // Buscar por CallSid y TenantId (seguridad multitenant)
+    LogLlamada findByCallSidAndTenantId(String callSid, String tenantId);
+
+    // Buscar por ID y TenantId (seguridad multitenant)
+    LogLlamada findByIdAndTenantId(Long id, String tenantId);
+
+    // Métodos con estado y ordenamiento
+    List<LogLlamada> findByTenantIdAndEstadoOrderByFechaInicioDesc(String tenantId, LogLlamada.EstadoLlamada estado);
+
+    // Métodos con dirección
+    List<LogLlamada> findByTenantIdAndDireccionOrderByFechaInicioDesc(String tenantId, LogLlamada.DireccionLlamada direccion);
+
+    // Métodos con rango de fechas
+    List<LogLlamada> findByTenantIdAndFechaInicioBetweenOrderByFechaInicioDesc(
+            String tenantId,
+            LocalDateTime fechaInicio,
+            LocalDateTime fechaFin
+    );
+
+    // Métodos con número de origen
+    List<LogLlamada> findByTenantIdAndNumeroOrigenOrderByFechaInicioDesc(String tenantId, String numeroOrigen);
+
+    // ===== MÉTODOS DE CONTEO PARA ESTADÍSTICAS =====
+
+    // Conteos básicos
+    Long countByTenantId(String tenantId);
+
+    Long countByTenantIdAndDireccion(String tenantId, LogLlamada.DireccionLlamada direccion);
+
+    Long countByTenantIdAndEstado(String tenantId, LogLlamada.EstadoLlamada estado);
+
+    // Conteo de llamadas con cita creada
+    Long countByTenantIdAndCitaCreadaIdIsNotNull(String tenantId);
+
+    // ===== MÉTODOS ADICIONALES ÚTILES =====
+
+    // Verificar si existe llamada
+    boolean existsByCallSidAndTenantId(String callSid, String tenantId);
+
+    // Obtener últimas llamadas
+    List<LogLlamada> findFirst10ByTenantIdOrderByFechaInicioDesc(String tenantId);
+
+    // Llamadas activas (en progreso)
+    List<LogLlamada> findByTenantIdAndEstadoInOrderByFechaInicioDesc(
+            String tenantId,
+            List<LogLlamada.EstadoLlamada> estados
+    );
+
+    // Llamadas del día actual
+    @Query("SELECT l FROM LogLlamada l WHERE l.tenantId = :tenantId " +
+            "AND DATE(l.fechaInicio) = CURRENT_DATE " +
+            "ORDER BY l.fechaInicio DESC")
+    List<LogLlamada> findLlamadasDeHoy(@Param("tenantId") String tenantId);
+
+    // Duración total por tenant
+    @Query("SELECT COALESCE(SUM(l.duracionSegundos), 0) FROM LogLlamada l " +
+            "WHERE l.tenantId = :tenantId AND l.duracionSegundos IS NOT NULL")
+    Long sumDuracionByTenantId(@Param("tenantId") String tenantId);
+
+    // Llamadas por cliente específico (usando número)
+    Long countByTenantIdAndNumeroOrigen(String tenantId, String numeroOrigen);
 }
