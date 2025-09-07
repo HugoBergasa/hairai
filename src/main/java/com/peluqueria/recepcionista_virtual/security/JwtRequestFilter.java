@@ -35,19 +35,25 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         String requestPath = request.getServletPath();
         String method = request.getMethod();
 
-        // Log para debug
+        // CRÍTICO: SALIR INMEDIATAMENTE para OPTIONS - No procesar nada más
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            logger.debug("OPTIONS request - saltando completamente JWT filter");
+            chain.doFilter(request, response);
+            return;
+        }
+
+        // Log para debug (solo para requests que no sean OPTIONS)
         logger.debug("JWT Filter - Path: {}, Method: {}", requestPath, method);
 
-        // CRÍTICO: Saltar validación para rutas públicas y OPTIONS
-        if ("OPTIONS".equalsIgnoreCase(method) ||
-                requestPath.equals("/api/auth/login") ||
+        // CRÍTICO: Saltar validación para rutas públicas
+        if (requestPath.equals("/api/auth/login") ||
                 requestPath.equals("/api/auth/register") ||
                 requestPath.startsWith("/api/twilio/") ||
                 requestPath.equals("/health") ||
                 requestPath.startsWith("/ws") ||
                 requestPath.startsWith("/actuator/")) {
 
-            logger.debug("Ruta pública o OPTIONS - saltando JWT");
+            logger.debug("Ruta pública - saltando JWT");
             chain.doFilter(request, response);
             return;
         }
@@ -92,12 +98,6 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 }
             } else {
                 logger.warn("Token inválido para usuario: {}", username);
-            }
-        } else {
-            // IMPORTANTE: También establecer tenantId para rutas que no requieren autenticación completa
-            if (tenantId != null) {
-                request.setAttribute("tenantId", tenantId);
-                logger.debug("TenantId establecido en request sin autenticación completa: {}", tenantId);
             }
         }
 

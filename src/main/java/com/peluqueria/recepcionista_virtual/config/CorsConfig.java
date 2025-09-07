@@ -19,36 +19,20 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // SEGURIDAD: Origenes especificos desde variable de entorno
+        // SEGURIDAD: Orígenes específicos desde variable de entorno
         List<String> origins = Arrays.asList(allowedOrigins.split(","));
         configuration.setAllowedOrigins(origins);
 
-        // CRITICO: También permitir origins patterns para desarrollo
+        // CRÍTICO: También permitir origin patterns para desarrollo
         configuration.setAllowedOriginPatterns(Arrays.asList("https://*.netlify.app", "http://localhost:*"));
 
-        // SEGURIDAD: Metodos HTTP especificos necesarios
+        // SEGURIDAD: Métodos HTTP específicos necesarios
         configuration.setAllowedMethods(Arrays.asList(
                 "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"
         ));
 
-        // CRITICO: Headers multi-tenant - TODAS las variantes posibles
-        configuration.setAllowedHeaders(Arrays.asList(
-                "Authorization",
-                "Content-Type",
-                "X-Requested-With",
-                "Accept",
-                "Origin",
-                "Access-Control-Request-Method",
-                "Access-Control-Request-Headers",
-                "X-Tenant-ID",           // Formato principal
-                "X-Tenant-Id",           // Variante camelCase
-                "x-tenant-id",           // Variante lowercase
-                "x-tenant-ID",           // Variante mixta
-                "X-TENANT-ID",           // Variante uppercase
-                "Cache-Control",
-                "Pragma",
-                "Expires"
-        ));
+        // CRÍTICO: Headers multi-tenant - SIMPLIFICADO para evitar conflictos
+        configuration.addAllowedHeader("*"); // Temporal para debug
 
         // Headers expuestos al cliente
         configuration.setExposedHeaders(Arrays.asList(
@@ -56,15 +40,14 @@ public class CorsConfig {
                 "Access-Control-Allow-Origin",
                 "Access-Control-Allow-Credentials",
                 "X-Tenant-ID",
-                "X-Tenant-Id",
-                "x-tenant-id"
+                "Content-Type"
         ));
 
-        // CRITICO: Permitir credenciales para JWT
+        // CRÍTICO: Permitir credenciales para JWT
         configuration.setAllowCredentials(true);
 
-        // Cache conservador para preflight requests
-        configuration.setMaxAge(3600L);
+        // CRÍTICO: Cache más largo para preflight (reduce requests)
+        configuration.setMaxAge(7200L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
