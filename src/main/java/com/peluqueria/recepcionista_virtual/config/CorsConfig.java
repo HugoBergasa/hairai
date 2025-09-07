@@ -7,6 +7,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 public class CorsConfig {
@@ -18,15 +19,19 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // SEGURIDAD: Orígenes específicos desde variable de entorno
-        configuration.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+        // SEGURIDAD: Origenes especificos desde variable de entorno
+        List<String> origins = Arrays.asList(allowedOrigins.split(","));
+        configuration.setAllowedOrigins(origins);
 
-        // SEGURIDAD: Métodos HTTP específicos necesarios
+        // CRITICO: También permitir origins patterns para desarrollo
+        configuration.setAllowedOriginPatterns(Arrays.asList("https://*.netlify.app", "http://localhost:*"));
+
+        // SEGURIDAD: Metodos HTTP especificos necesarios
         configuration.setAllowedMethods(Arrays.asList(
-                "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"
+                "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"
         ));
 
-        // SEGURIDAD MEJORADA: Headers específicos en lugar de "*"
+        // CRITICO: Headers multi-tenant - TODAS las variantes posibles
         configuration.setAllowedHeaders(Arrays.asList(
                 "Authorization",
                 "Content-Type",
@@ -35,9 +40,14 @@ public class CorsConfig {
                 "Origin",
                 "Access-Control-Request-Method",
                 "Access-Control-Request-Headers",
-                "X-Tenant-ID",           // ← CRÍTICO para multi-tenant
-                "X-Tenant-Id",           // ← Variantes del header
-                "x-tenant-id"            // ← Case insensitive
+                "X-Tenant-ID",           // Formato principal
+                "X-Tenant-Id",           // Variante camelCase
+                "x-tenant-id",           // Variante lowercase
+                "x-tenant-ID",           // Variante mixta
+                "X-TENANT-ID",           // Variante uppercase
+                "Cache-Control",
+                "Pragma",
+                "Expires"
         ));
 
         // Headers expuestos al cliente
@@ -45,17 +55,20 @@ public class CorsConfig {
                 "Authorization",
                 "Access-Control-Allow-Origin",
                 "Access-Control-Allow-Credentials",
-                "X-Tenant-ID"
+                "X-Tenant-ID",
+                "X-Tenant-Id",
+                "x-tenant-id"
         ));
 
-        // Permitir credenciales para JWT
+        // CRITICO: Permitir credenciales para JWT
         configuration.setAllowCredentials(true);
 
-        // Cache conservador (1 hora es más seguro que 24 horas)
+        // Cache conservador para preflight requests
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
+
         return source;
     }
 }
