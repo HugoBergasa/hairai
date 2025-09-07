@@ -13,7 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/citas")
-@CrossOrigin
+// ELIMINADO: @CrossOrigin - Usar configuración global de CorsConfig.java
 public class CitasController {
 
     @Autowired
@@ -46,6 +46,46 @@ public class CitasController {
             System.err.println("ERROR en getCitasHoy: " + e.getMessage());
             e.printStackTrace();
             // Devolver lista vacía en caso de error para no romper el frontend
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    /**
+     * MULTI-TENANT: Obtener citas por rango de fechas - NUEVO ENDPOINT
+     */
+    @GetMapping
+    public ResponseEntity<?> getCitasByDateRange(
+            HttpServletRequest request,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate
+    ) {
+        try {
+            String tenantId = (String) request.getAttribute("tenantId");
+
+            System.out.println("DEBUG CitasController.getCitasByDateRange - TenantId: " + tenantId);
+            System.out.println("DEBUG: StartDate: " + startDate + ", EndDate: " + endDate);
+
+            if (tenantId == null) {
+                System.out.println("WARN: TenantId es null en /api/citas");
+                return ResponseEntity.ok(List.of());
+            }
+
+            // Si no hay fechas, usar citas de hoy
+            if (startDate == null || endDate == null) {
+                List<Cita> citas = citaService.obtenerCitasDelDia(tenantId);
+                return ResponseEntity.ok(citas);
+            }
+
+            // TODO: Implementar búsqueda por rango de fechas en CitaService
+            // Por ahora devolver citas del día
+            List<Cita> citas = citaService.obtenerCitasDelDia(tenantId);
+            System.out.println("DEBUG: Obtenidas " + citas.size() + " citas para tenant " + tenantId);
+
+            return ResponseEntity.ok(citas);
+
+        } catch (Exception e) {
+            System.err.println("ERROR en getCitasByDateRange: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.ok(List.of());
         }
     }
@@ -123,30 +163,6 @@ public class CitasController {
             e.printStackTrace();
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Error al cancelar cita: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * NUEVO: Obtener todas las citas del tenant (para futuro uso)
-     */
-    @GetMapping
-    public ResponseEntity<?> getAllCitas(HttpServletRequest request) {
-        try {
-            String tenantId = (String) request.getAttribute("tenantId");
-
-            if (tenantId == null) {
-                return ResponseEntity.ok(List.of());
-            }
-
-            // Por ahora usar el mismo método de citas del día
-            // TODO: Crear método específico para obtener todas las citas
-            List<Cita> citas = citaService.obtenerCitasDelDia(tenantId);
-
-            return ResponseEntity.ok(citas);
-
-        } catch (Exception e) {
-            System.err.println("ERROR en getAllCitas: " + e.getMessage());
-            return ResponseEntity.ok(List.of());
         }
     }
 }

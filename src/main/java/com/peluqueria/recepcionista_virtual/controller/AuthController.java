@@ -19,7 +19,6 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin
 public class AuthController {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthController.class);

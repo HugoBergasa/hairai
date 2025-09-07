@@ -23,7 +23,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/stats")
-@CrossOrigin
 public class StatsController {
 
     private static final Logger logger = LoggerFactory.getLogger(StatsController.class);

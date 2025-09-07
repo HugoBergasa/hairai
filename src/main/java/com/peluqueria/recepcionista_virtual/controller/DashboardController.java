@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/dashboard")
-@CrossOrigin
 public class DashboardController {
 
     private static final Logger logger = LoggerFactory.getLogger(DashboardController.class);
