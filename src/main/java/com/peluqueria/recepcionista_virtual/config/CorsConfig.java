@@ -19,34 +19,38 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // SEGURIDAD: Orígenes específicos desde variable de entorno
+        // SEGURIDAD: Orígenes específicos
         List<String> origins = Arrays.asList(allowedOrigins.split(","));
         configuration.setAllowedOrigins(origins);
-
-        // CRÍTICO: También permitir origin patterns para desarrollo
         configuration.setAllowedOriginPatterns(Arrays.asList("https://*.netlify.app", "http://localhost:*"));
 
-        // SEGURIDAD: Métodos HTTP específicos necesarios
+        // Métodos HTTP
         configuration.setAllowedMethods(Arrays.asList(
                 "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"
         ));
 
-        // CRÍTICO: Headers multi-tenant - SIMPLIFICADO para evitar conflictos
-        configuration.addAllowedHeader("*"); // Temporal para debug
-
-        // Headers expuestos al cliente
-        configuration.setExposedHeaders(Arrays.asList(
+        // CRÍTICO: Headers explícitos sin usar "*"
+        configuration.setAllowedHeaders(Arrays.asList(
                 "Authorization",
-                "Access-Control-Allow-Origin",
-                "Access-Control-Allow-Credentials",
-                "X-Tenant-ID",
-                "Content-Type"
+                "Content-Type",
+                "X-Requested-With",
+                "Accept",
+                "Origin",
+                "Access-Control-Request-Method",
+                "Access-Control-Request-Headers",
+                "x-tenant-id",           // EXACTAMENTE como lo envía el frontend
+                "X-Tenant-ID",           // Por si acaso
+                "Cache-Control"
         ));
 
-        // CRÍTICO: Permitir credenciales para JWT
-        configuration.setAllowCredentials(true);
+        // Headers expuestos
+        configuration.setExposedHeaders(Arrays.asList(
+                "Authorization",
+                "Content-Type",
+                "x-tenant-id"
+        ));
 
-        // CRÍTICO: Cache más largo para preflight (reduce requests)
+        configuration.setAllowCredentials(true);
         configuration.setMaxAge(7200L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
