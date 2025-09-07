@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public class LogLlamada {
 
     @Id
+    @Column(name = "id", columnDefinition = "VARCHAR(255)")
     private String id; // VARCHAR(255) en BD - SIN @GeneratedValue
 
     @Column(name = "tenant_id", nullable = false)

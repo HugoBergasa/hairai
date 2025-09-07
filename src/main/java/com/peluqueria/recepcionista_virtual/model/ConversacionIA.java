@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 public class ConversacionIA {
 
     @Id
+    @Column(name = "id", columnDefinition = "VARCHAR(255)")
     private String id; // VARCHAR(255) en BD - SIN @GeneratedValue
 
     @Column(name = "tenant_id", nullable = false)
