@@ -16,6 +16,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.http.HttpMethod;
 import com.peluqueria.recepcionista_virtual.security.JwtRequestFilter;
 import com.peluqueria.recepcionista_virtual.security.JwtAuthenticationEntryPoint;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 @Configuration
 @EnableWebSecurity
@@ -27,8 +28,8 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
-    // CRÍTICO: Usar el bean de CorsConfig.java (no configuración inline)
     @Autowired
+    @Qualifier("corsConfigurationSource")
     private CorsConfigurationSource corsConfigurationSource;
 
     @Bean
