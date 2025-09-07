@@ -198,14 +198,19 @@ public interface LogLlamadaRepository extends JpaRepository<LogLlamada, String> 
     // ===== QUERIES PARA DASHBOARD Y ANALÍTICAS =====
 
     /**
-     * Obtener llamadas del día actual
+     * Obtener llamadas del día actual - CORREGIDO para PostgreSQL
      */
     @Query("SELECT l FROM LogLlamada l WHERE l.tenantId = :tenantId " +
-            "AND DATE(l.fechaInicio) = CURRENT_DATE ORDER BY l.fechaInicio DESC")
-    List<LogLlamada> findLlamadasDelDia(@Param("tenantId") String tenantId);
+            "AND l.fechaInicio >= :inicioDelDia AND l.fechaInicio < :finDelDia " +
+            "ORDER BY l.fechaInicio DESC")
+    List<LogLlamada> findLlamadasDelDia(
+            @Param("tenantId") String tenantId,
+            @Param("inicioDelDia") LocalDateTime inicioDelDia,
+            @Param("finDelDia") LocalDateTime finDelDia
+    );
 
     /**
-     * Obtener llamadas de la semana actual
+     * Obtener llamadas de la semana actual - CORREGIDO
      */
     @Query("SELECT l FROM LogLlamada l WHERE l.tenantId = :tenantId " +
             "AND l.fechaInicio >= :inicioSemana ORDER BY l.fechaInicio DESC")

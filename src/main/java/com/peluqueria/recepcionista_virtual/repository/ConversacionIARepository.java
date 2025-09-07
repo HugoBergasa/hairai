@@ -187,14 +187,19 @@ public interface ConversacionIARepository extends JpaRepository<ConversacionIA, 
     // ===== QUERIES PARA DASHBOARD Y ANALÍTICAS =====
 
     /**
-     * Obtener conversaciones del día actual
+     * Obtener conversaciones del día actual - CORREGIDO para PostgreSQL
      */
     @Query("SELECT c FROM ConversacionIA c WHERE c.tenantId = :tenantId " +
-            "AND DATE(c.timestamp) = CURRENT_DATE ORDER BY c.timestamp DESC")
-    List<ConversacionIA> findConversacionesDelDia(@Param("tenantId") String tenantId);
+            "AND c.timestamp >= :inicioDelDia AND c.timestamp < :finDelDia " +
+            "ORDER BY c.timestamp DESC")
+    List<ConversacionIA> findConversacionesDelDia(
+            @Param("tenantId") String tenantId,
+            @Param("inicioDelDia") LocalDateTime inicioDelDia,
+            @Param("finDelDia") LocalDateTime finDelDia
+    );
 
     /**
-     * Obtener conversaciones de la semana actual
+     * Obtener conversaciones de la semana actual - CORREGIDO
      */
     @Query("SELECT c FROM ConversacionIA c WHERE c.tenantId = :tenantId " +
             "AND c.timestamp >= :inicioSemana ORDER BY c.timestamp DESC")
