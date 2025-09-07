@@ -3,6 +3,7 @@ package com.peluqueria.recepcionista_virtual.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -16,6 +17,7 @@ public class CorsConfig {
     private String allowedOrigins;
 
     @Bean
+    @Primary  // CRÍTICO: Forzar precedencia sobre cualquier otro bean CORS
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
@@ -29,7 +31,7 @@ public class CorsConfig {
                 "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"
         ));
 
-        // CRÍTICO: Headers explícitos sin usar "*"
+        // CRÍTICO: Headers multi-tenant explícitos
         configuration.setAllowedHeaders(Arrays.asList(
                 "Authorization",
                 "Content-Type",
