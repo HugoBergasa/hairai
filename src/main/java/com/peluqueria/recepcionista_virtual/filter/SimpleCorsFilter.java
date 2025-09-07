@@ -20,11 +20,28 @@ public class SimpleCorsFilter implements Filter {
         HttpServletResponse response = (HttpServletResponse) res;
         HttpServletRequest request = (HttpServletRequest) req;
 
-        response.setHeader("Access-Control-Allow-Origin", "https://hairai.netlify.app");
-        response.setHeader("Access-Control-Allow-Methods", "POST, PUT, GET, OPTIONS, DELETE");
-        response.setHeader("Access-Control-Max-Age", "3600");
-        response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Content-Length, X-Requested-With");
+        String origin = request.getHeader("Origin");
+
+        // Permitir origins específicos de forma segura
+        if (origin != null && (
+                origin.equals("https://hairai.netlify.app") ||
+                        origin.startsWith("http://localhost:") ||
+                        (origin.startsWith("https://") && origin.endsWith(".netlify.app"))
+        )) {
+            response.setHeader("Access-Control-Allow-Origin", origin);
+        }
+
+        response.setHeader("Access-Control-Allow-Methods", "POST, PUT, GET, OPTIONS, DELETE, PATCH, HEAD");
+        response.setHeader("Access-Control-Max-Age", "7200");
+
+        // CRITICO: Incluir x-tenant-id para multi-tenant
+        response.setHeader("Access-Control-Allow-Headers",
+                "Content-Type, Authorization, Content-Length, X-Requested-With, " +
+                        "x-tenant-id, X-Tenant-ID, Cache-Control, Accept, Origin, " +
+                        "Access-Control-Request-Method, Access-Control-Request-Headers");
+
         response.setHeader("Access-Control-Allow-Credentials", "true");
+        response.setHeader("Access-Control-Expose-Headers", "Authorization, Content-Type, x-tenant-id");
 
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             response.setStatus(HttpServletResponse.SC_OK);
