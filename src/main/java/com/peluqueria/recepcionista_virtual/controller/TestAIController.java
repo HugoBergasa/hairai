@@ -18,7 +18,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/test")
-@CrossOrigin(origins = {"http://localhost:3000", "https://hairai.netlify.app"})
 public class TestAIController {
 
     private static final Logger logger = LoggerFactory.getLogger(TestAIController.class);
