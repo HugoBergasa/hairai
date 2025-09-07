@@ -45,7 +45,7 @@ public interface LogLlamadaRepository extends JpaRepository<LogLlamada, Long> {
             @Param("numeroOrigen") String numeroOrigen
     );
 
-    // ===== MÉTODOS AGREGADOS PARA EL SERVICE =====
+    // ===== MÉTODOS AGREGADOS BÁSICOS (SIN QUERIES PROBLEMÁTICAS) =====
 
     // Métodos con ordenamiento
     List<LogLlamada> findByTenantIdOrderByFechaInicioDesc(String tenantId);
@@ -74,43 +74,32 @@ public interface LogLlamadaRepository extends JpaRepository<LogLlamada, Long> {
     // Métodos con número de origen
     List<LogLlamada> findByTenantIdAndNumeroOrigenOrderByFechaInicioDesc(String tenantId, String numeroOrigen);
 
-    // ===== MÉTODOS DE CONTEO PARA ESTADÍSTICAS =====
+    // ===== MÉTODOS DE CONTEO BÁSICOS =====
 
-    // Conteos básicos
     Long countByTenantId(String tenantId);
 
     Long countByTenantIdAndDireccion(String tenantId, LogLlamada.DireccionLlamada direccion);
 
     Long countByTenantIdAndEstado(String tenantId, LogLlamada.EstadoLlamada estado);
 
-    // Conteo de llamadas con cita creada
     Long countByTenantIdAndCitaCreadaIdIsNotNull(String tenantId);
 
-    // ===== MÉTODOS ADICIONALES ÚTILES =====
+    // ===== MÉTODOS ADICIONALES SEGUROS =====
 
-    // Verificar si existe llamada
     boolean existsByCallSidAndTenantId(String callSid, String tenantId);
 
-    // Obtener últimas llamadas
     List<LogLlamada> findFirst10ByTenantIdOrderByFechaInicioDesc(String tenantId);
 
-    // Llamadas activas (en progreso)
     List<LogLlamada> findByTenantIdAndEstadoInOrderByFechaInicioDesc(
             String tenantId,
             List<LogLlamada.EstadoLlamada> estados
     );
 
-    // Llamadas del día actual
-    @Query("SELECT l FROM LogLlamada l WHERE l.tenantId = :tenantId " +
-            "AND DATE(l.fechaInicio) = CURRENT_DATE " +
-            "ORDER BY l.fechaInicio DESC")
-    List<LogLlamada> findLlamadasDeHoy(@Param("tenantId") String tenantId);
 
-    // Duración total por tenant
+
     @Query("SELECT COALESCE(SUM(l.duracionSegundos), 0) FROM LogLlamada l " +
             "WHERE l.tenantId = :tenantId AND l.duracionSegundos IS NOT NULL")
     Long sumDuracionByTenantId(@Param("tenantId") String tenantId);
 
-    // Llamadas por cliente específico (usando número)
     Long countByTenantIdAndNumeroOrigen(String tenantId, String numeroOrigen);
 }
