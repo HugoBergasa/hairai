@@ -1,5 +1,7 @@
 package com.peluqueria.recepcionista_virtual.controller;
 
+import com.peluqueria.recepcionista_virtual.dto.CitaDTO;
+import com.peluqueria.recepcionista_virtual.dto.DatosCita;
 import com.peluqueria.recepcionista_virtual.model.Cita;
 import com.peluqueria.recepcionista_virtual.model.EstadoCita;
 import com.peluqueria.recepcionista_virtual.service.CitaService;
@@ -94,12 +96,8 @@ public class CitasController {
      * MULTI-TENANT: Crear cita - CORREGIDO
      */
     @PostMapping
-    public ResponseEntity<?> crearCita(
-            HttpServletRequest request,
-            @RequestBody Map<String, Object> citaData
-    ) {
+    public ResponseEntity<?> crearCita(HttpServletRequest request, @RequestBody Map<String, Object> citaData) {
         try {
-            // CORRECCIÓN: Extraer tenantId del request
             String tenantId = (String) request.getAttribute("tenantId");
 
             System.out.println("DEBUG CitasController.crearCita - TenantId: " + tenantId);
@@ -110,20 +108,45 @@ public class CitasController {
                         .body(Map.of("error", "No autorizado - tenantId requerido"));
             }
 
-            // TODO: Implementar creación de cita desde el frontend
-            // Por ahora devolver respuesta exitosa para testing
-            return ResponseEntity.ok(Map.of(
-                    "mensaje", "Cita creada exitosamente",
-                    "tenantId", tenantId,
-                    "datos", citaData,
-                    "status", "success"
-            ));
+            // 🔧 CORRECCIÓN: Mapear datos del frontend a CitaDTO
+            CitaDTO citaDTO = new CitaDTO();
+
+            // Mapear campos del frontend
+            if (citaData.get("clienteNombre") != null) {
+                // Buscar o crear cliente por nombre/teléfono
+                // Por simplicidad, usaremos el método con DatosCita
+            }
+
+            // 🔧 USAR EL SERVICE REAL para guardar
+            if (citaData.get("fechaHora") != null) {
+                // Crear usando el servicio existente
+                DatosCita datos = new DatosCita();
+                datos.setNombreCliente((String) citaData.get("clienteNombre"));
+                datos.setServicio((String) citaData.get("servicio"));
+                datos.setFecha((String) citaData.get("fecha"));
+                datos.setHora((String) citaData.get("hora"));
+
+                String telefono = (String) citaData.get("clienteTelefono");
+                if (telefono == null) telefono = "+34600000000"; // Default para testing
+
+                // 🚀 LLAMAR AL SERVICE REAL
+                Cita citaGuardada = citaService.crearCita(tenantId, telefono, datos);
+
+                return ResponseEntity.ok(Map.of(
+                        "mensaje", "Cita creada exitosamente",
+                        "cita", CitaDTO.fromCita(citaGuardada),
+                        "status", "success"
+                ));
+            }
+
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Datos insuficientes para crear cita"));
 
         } catch (Exception e) {
             System.err.println("ERROR en crearCita: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Error al crear cita"));
+                    .body(Map.of("error", "Error al crear cita: " + e.getMessage()));
         }
     }
 
