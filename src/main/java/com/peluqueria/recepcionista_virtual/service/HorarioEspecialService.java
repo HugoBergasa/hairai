@@ -1,13 +1,13 @@
 package com.peluqueria.recepcionista_virtual.service;
 
 import com.peluqueria.recepcionista_virtual.dto.*;
-import com.peluqueria.recepcionista_virtual.model.HorarioEspecial;
-import com.peluqueria.recepcionista_virtual.model.TipoCierre;
-import com.peluqueria.recepcionista_virtual.model.Cita;
+import com.peluqueria.recepcionista_virtual.model.*;
+import com.peluqueria.recepcionista_virtual.repository.CitaRepository;
 import com.peluqueria.recepcionista_virtual.repository.HorarioEspecialRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.peluqueria.recepcionista_virtual.repository.TenantRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +18,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+
+import com.peluqueria.recepcionista_virtual.model.EstadoCita;
+
 
 /**
  * SERVICIO CRITICO: Gestion de horarios especiales y verificacion de disponibilidad
@@ -42,6 +46,15 @@ public class HorarioEspecialService {
 
     // @Autowired
     // private OpenAIService openAIService;
+
+    @Autowired
+    private CitaRepository citaRepository;
+
+    @Autowired
+    private TwilioAIService twilioAIService; // Para enviar SMS
+
+    @Autowired
+    private TenantRepository tenantRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -257,31 +270,37 @@ public class HorarioEspecialService {
      * MULTITENANT: Aislado por tenant
      * ZERO HARDCODING: Mensajes personalizables
      */
-    public HorarioEspecial crearCierre(String tenantId, HorarioEspecialDTO dto) {
-        logger.info("Creando cierre planificado para tenant: {}", tenantId);
+    public Object crearCierreConVerificacion(String tenantId, HorarioEspecialDTO dto, boolean forzarCierre) {
+        logger.info("Creando cierre con verificacion - Tenant: {}, Forzar: {}", tenantId, forzarCierre);
 
-        // Validaciones de negocio
+        // 1. Validaciones básicas
         validarDatosCierre(dto);
 
-        // Verificar solapamientos
-        List<HorarioEspecial> solapamientos = horarioEspecialRepository.findSolapamientos(
-                tenantId, dto.getFechaInicio(), dto.getFechaFin(), ""
-        );
+        // 2. Verificar citas existentes si no es forzado
+        if (!forzarCierre) {
+            ResultadoVerificacionCitas verificacion = verificarCitasExistentes(
+                    tenantId, dto.getFechaInicio(), dto.getFechaFin()
+            );
 
-        if (!solapamientos.isEmpty()) {
-            logger.warn("Creando cierre con solapamientos existentes para tenant: {}", tenantId);
+            if (verificacion.isRequiereConfirmacion()) {
+                logger.info("Cierre requiere confirmacion: {} citas afectadas",
+                        verificacion.getNumeroCitasAfectadas());
+                return verificacion; // Retornar verificación para que frontend muestre confirmación
+            }
         }
 
-        // Crear entidad
+        // 3. Si no hay citas afectadas O es cierre forzado, crear el cierre
+        logger.info("Procediendo con creacion de cierre - Forzado: {}", forzarCierre);
+
         HorarioEspecial horario = mapearDTOToEntity(dto, tenantId);
         HorarioEspecial guardado = horarioEspecialRepository.save(horario);
 
-        // Notificar clientes si es necesario (cuando CitaService este listo)
-        if (Boolean.TRUE.equals(dto.getNotificarClientesExistentes())) {
-            // notificarClientesAfectados(tenantId, dto.getFechaInicio(), dto.getFechaFin(), dto.getMotivo());
+        // 4. Si es cierre forzado, notificar a clientes afectados
+        if (forzarCierre) {
+            notificarClientesAfectadosAsincronamente(tenantId, dto.getFechaInicio(), dto.getFechaFin(), dto.getMotivo());
         }
 
-        logger.info("Cierre planificado creado exitosamente: {}", guardado.getId());
+        logger.info("Cierre creado exitosamente: {}", guardado.getId());
         return guardado;
     }
 
@@ -486,6 +505,149 @@ public class HorarioEspecialService {
         } catch (Exception e) {
             logger.error("Error deserializando servicios afectados", e);
             return serviciosAfectadosJson.contains(servicioId);
+        }
+    }
+
+    public ResultadoVerificacionCitas verificarCitasExistentes(String tenantId,
+                                                               LocalDate fechaInicio,
+                                                               LocalDate fechaFin) {
+        try {
+            logger.info("Verificando citas existentes para cierre - Tenant: {}, Fechas: {} a {}",
+                    tenantId, fechaInicio, fechaFin);
+
+            // CORREGIDO: Usar la query corregida
+            List<Cita> citasAfectadas = citaRepository.findCitasEnRangoFechas(
+                    tenantId, fechaInicio, fechaFin
+            );
+
+            if (citasAfectadas.isEmpty()) {
+                logger.debug("No hay citas afectadas en el rango de fechas");
+                return ResultadoVerificacionCitas.sinCitasAfectadas();
+            }
+
+            logger.warn("CITAS AFECTADAS: {} citas encontradas en rango de cierre", citasAfectadas.size());
+            return ResultadoVerificacionCitas.conCitasAfectadas(citasAfectadas);
+
+        } catch (Exception e) {
+            logger.error("Error verificando citas existentes: {}", e.getMessage(), e);
+            ResultadoVerificacionCitas resultado = new ResultadoVerificacionCitas();
+            resultado.setRequiereConfirmacion(true);
+            resultado.setMensajeAviso("Error verificando citas existentes. Por seguridad, confirme el cierre.");
+            return resultado;
+        }
+    }
+
+    private void notificarClientesAfectadosAsincronamente(String tenantId,
+                                                          LocalDate fechaInicio,
+                                                          LocalDate fechaFin,
+                                                          String motivo) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                logger.info("Iniciando notificaciones a clientes afectados - Tenant: {}", tenantId);
+
+                List<Cita> citasAfectadas = citaRepository.findCitasEnRangoFechas(
+                        tenantId, fechaInicio, fechaFin
+                );
+
+                int notificacionesEnviadas = 0;
+
+                for (Cita cita : citasAfectadas) {
+                    try {
+                        boolean enviado = enviarNotificacionCierre(cita, motivo, tenantId);
+                        if (enviado) {
+                            notificacionesEnviadas++;
+
+                            // CORREGIDO: Usar nombres correctos según tu entidad
+                            cita.setEstado(EstadoCita.CANCELADA);
+                            cita.setNotas("Cancelada por cierre del salon: " + motivo);
+                            citaRepository.save(cita);
+                        }
+
+                        Thread.sleep(500);
+
+                    } catch (Exception e) {
+                        logger.error("Error enviando notificacion a cliente {}: {}",
+                                cita.getCliente().getNombre(), e.getMessage());
+                    }
+                }
+
+                logger.info("Notificaciones completadas - Tenant: {}, Enviadas: {}/{}",
+                        tenantId, notificacionesEnviadas, citasAfectadas.size());
+
+            } catch (Exception e) {
+                logger.error("Error en proceso de notificaciones: {}", e.getMessage(), e);
+            }
+        });
+    }
+
+    /**
+     * NUEVO: Enviar notificación individual a cliente
+     *
+     * ZERO HARDCODING: Mensaje generado dinámicamente
+     * MULTITENANT: Personalizado por tenant
+     */
+    private String construirMensajeNotificacionCierre(Cita cita, String motivo, String nombreSalon) {
+        StringBuilder mensaje = new StringBuilder();
+
+        mensaje.append("Hola ").append(cita.getCliente().getNombre()).append(", ");
+        mensaje.append("lamentamos informarte que hemos tenido que cerrar ");
+        mensaje.append(nombreSalon).append(" ");
+
+        if (motivo != null && !motivo.trim().isEmpty()) {
+            mensaje.append("por ").append(motivo.toLowerCase()).append(". ");
+        } else {
+            mensaje.append("temporalmente. ");
+        }
+
+        // CORREGIDO: Usar fechaHora y extraer fecha y hora
+        LocalDate fechaCita = cita.getFechaHora().toLocalDate();
+        LocalTime horaCita = cita.getFechaHora().toLocalTime();
+
+        mensaje.append("Tu cita del ").append(fechaCita)
+                .append(" a las ").append(horaCita)
+                .append(" ha sido cancelada. ");
+
+        mensaje.append("Por favor llamanos para reprogramar tu cita. ");
+        mensaje.append("Disculpa las molestias.");
+
+        return mensaje.toString();
+    }
+
+    /**
+     * NUEVO: Enviar notificación individual a cliente
+     *
+     * ZERO HARDCODING: Mensaje generado dinámicamente
+     * MULTITENANT: Personalizado por tenant
+     */
+    private boolean enviarNotificacionCierre(Cita cita, String motivo, String tenantId) {
+        try {
+            // Obtener datos del tenant para personalizar mensaje
+            Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+            String nombreSalon = tenant != null ? tenant.getNombrePeluqueria() : "el salon";
+
+            // Construir mensaje personalizado (sin hardcoding)
+            String mensaje = construirMensajeNotificacionCierre(cita, motivo, nombreSalon);
+
+            // Enviar SMS si el cliente tiene teléfono
+            String telefono = cita.getCliente().getTelefono();
+            if (telefono != null && !telefono.trim().isEmpty()) {
+
+                // Usar servicio de Twilio para enviar SMS
+                twilioAIService.enviarSMS(telefono, mensaje);
+
+                logger.info("SMS enviado a cliente {} ({}): {}",
+                        cita.getCliente().getNombre(), telefono, mensaje);
+
+                return true;
+            } else {
+                logger.warn("Cliente {} no tiene telefono para notificacion",
+                        cita.getCliente().getNombre());
+                return false;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error enviando notificacion: {}", e.getMessage());
+            return false;
         }
     }
 }

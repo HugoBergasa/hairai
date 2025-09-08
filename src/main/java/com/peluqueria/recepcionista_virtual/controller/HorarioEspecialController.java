@@ -148,32 +148,50 @@ public class HorarioEspecialController {
     }
 
     /**
-     * Crear cierre planificado (vacaciones, eventos, formacion)
-     *
-     * MULTITENANT: Asociado automaticamente al tenant
-     * ZERO HARDCODING: Mensajes personalizables
+     * MODIFICADO: Crear cierre con verificación de citas existentes
+     * Ahora maneja verificación en dos pasos: verificar → confirmar
      */
     @PostMapping("/crear-cierre")
     public ResponseEntity<?> crearCierre(
             @RequestAttribute("tenantId") String tenantId,
-            @Valid @RequestBody HorarioEspecialDTO dto) {
+            @Valid @RequestBody HorarioEspecialDTO dto,
+            @RequestParam(defaultValue = "false") boolean forzar) {
 
-        logger.info("📋 Creando cierre planificado - Tenant: {}, Fechas: {} - {}, Tipo: {}",
-                tenantId, dto.getFechaInicio(), dto.getFechaFin(), dto.getTipoCierre());
+        logger.info("Creando cierre - Tenant: {}, Fechas: {} - {}, Forzar: {}",
+                tenantId, dto.getFechaInicio(), dto.getFechaFin(), forzar);
 
         try {
-            HorarioEspecial horario = horarioEspecialService.crearCierre(tenantId, dto);
+            Object resultado = horarioEspecialService.crearCierreConVerificacion(tenantId, dto, forzar);
+
+            // Si el resultado es ResultadoVerificacionCitas, hay citas afectadas
+            if (resultado instanceof ResultadoVerificacionCitas) {
+                ResultadoVerificacionCitas verificacion = (ResultadoVerificacionCitas) resultado;
+
+                Map<String, Object> response = new HashMap<>();
+                response.put("requiereConfirmacion", true);
+                response.put("citasAfectadas", verificacion.getNumeroCitasAfectadas());
+                response.put("mensaje", verificacion.getMensajeAviso());
+                response.put("citas", verificacion.getCitasAfectadas());
+                response.put("accion", "Para confirmar el cierre, reenvie la peticion con parametro forzar=true");
+
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+            }
+
+            // Si el resultado es HorarioEspecial, el cierre se creó exitosamente
+            HorarioEspecial horario = (HorarioEspecial) resultado;
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Cierre programado exitosamente");
+            response.put("message", forzar ?
+                    "Cierre creado y notificaciones enviadas automaticamente" :
+                    "Cierre programado exitosamente");
             response.put("cierre", horario);
             response.put("tenantId", tenantId);
 
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
-            logger.warn("⚠️ Datos invalidos para cierre: {}", e.getMessage());
+            logger.warn("Datos invalidos para cierre: {}", e.getMessage());
 
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);
@@ -183,7 +201,7 @@ public class HorarioEspecialController {
             return ResponseEntity.badRequest().body(errorResponse);
 
         } catch (Exception e) {
-            logger.error("❌ Error creando cierre planificado", e);
+            logger.error("Error creando cierre", e);
 
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);

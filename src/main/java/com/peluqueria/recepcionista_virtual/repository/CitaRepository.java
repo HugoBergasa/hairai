@@ -4,6 +4,8 @@ import com.peluqueria.recepcionista_virtual.model.*;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -138,4 +140,16 @@ public interface CitaRepository extends JpaRepository<Cita, String> {
      */
     @Query("SELECT DAYOFWEEK(c.fechaHora) as diaSemana, HOUR(c.fechaHora) as hora, COUNT(c) as demanda FROM Cita c WHERE c.tenant.id = :tenantId AND c.estado IN ('CONFIRMADA', 'COMPLETADA') GROUP BY DAYOFWEEK(c.fechaHora), HOUR(c.fechaHora) ORDER BY demanda DESC")
     List<Object[]> findPatronesDemandaPorDiaYHora(@Param("tenantId") String tenantId);
+
+    /**
+     * NUEVA QUERY: Encontrar citas en rango de fechas
+     * CRITICA: Para verificar citas antes de cerrar fechas
+     */
+    @Query("SELECT c FROM Cita c WHERE c.tenant.id = :tenantId " +
+            "AND DATE(c.fechaHora) BETWEEN :fechaInicio AND :fechaFin " +
+            "AND c.estado NOT IN ('CANCELADA', 'COMPLETADA') " +
+            "ORDER BY c.fechaHora")
+    List<Cita> findCitasEnRangoFechas(@Param("tenantId") String tenantId,
+                                      @Param("fechaInicio") LocalDate fechaInicio,
+                                      @Param("fechaFin") LocalDate fechaFin);
 }
