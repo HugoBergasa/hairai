@@ -32,7 +32,7 @@ public class ServicioController {
             }
 
             // Obtener servicios activos del tenant
-            List<Servicio> servicios = servicioRepository.findByTenantIdAndActivoTrue(tenantId);
+            List<Servicio> servicios = servicioRepository.findActivosByTenantId(tenantId);
 
             return ResponseEntity.ok(Map.of(
                     "data", servicios,
