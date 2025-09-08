@@ -54,7 +54,7 @@ public class TwilioController {
             log.info("✅ Tenant determinado: {} para llamada desde: {} hacia: {}", tenantId, from, to);
 
             // ✅ PROCESAR CON OPENAI PERSONALIZADO POR TENANT
-            OpenAIResponse respuestaIA = openAIService.procesarMensaje(
+            OpenAIResponse respuestaIA = openAIService.procesarMensajeConVerificacionCierres(
                     body != null ? body : "Hola",
                     tenantId,
                     callSid
@@ -185,7 +185,7 @@ public class TwilioController {
             String tenantId = determinarTenantId(from, to);
 
             // ✅ USAR OpenAIService PERSONALIZADO POR TENANT
-            OpenAIResponse respuestaIA = openAIService.procesarMensaje(
+            OpenAIResponse respuestaIA = openAIService.procesarMensajeConVerificacionCierres(
                     speechResult,
                     tenantId,
                     callSid
@@ -247,8 +247,8 @@ public class TwilioController {
             // Usar tenant específico o por defecto
             String testTenantId = tenantId.isEmpty() ? defaultTenantId : tenantId;
 
-            OpenAIResponse test = openAIService.procesarMensaje(
-                    "Hola, quiero una cita",
+            OpenAIResponse test = openAIService.procesarMensajeConVerificacionCierres(
+                    "Hola, quiero una cita para mañana",
                     testTenantId,
                     "test-" + System.currentTimeMillis()
             );
