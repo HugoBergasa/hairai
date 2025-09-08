@@ -1,15 +1,20 @@
 package com.peluqueria.recepcionista_virtual.controller;
 
 import com.peluqueria.recepcionista_virtual.model.Tenant;
+import com.peluqueria.recepcionista_virtual.repository.TenantRepository;
 import com.peluqueria.recepcionista_virtual.service.TenantService;
 import com.peluqueria.recepcionista_virtual.service.ServicioService;
 import com.peluqueria.recepcionista_virtual.service.EmpleadoService;
 import com.peluqueria.recepcionista_virtual.dto.ServicioDTO;
 import com.peluqueria.recepcionista_virtual.dto.EmpleadoDTO;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/tenant")
@@ -23,6 +28,10 @@ public class TenantController {
 
     @Autowired
     private EmpleadoService empleadoService;
+
+
+    @Autowired
+    private TenantRepository tenantRepository;
 
     @GetMapping("/info")
     public ResponseEntity<?> getTenantInfo(@RequestAttribute(required = false) String tenantId) {
@@ -70,6 +79,43 @@ public class TenantController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body("Error al obtener empleados: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 🏢 OBTENER CONFIGURACIÓN DEL TENANT ACTUAL - MULTITENANT
+     */
+    @GetMapping("/config")
+    public ResponseEntity<?> getConfiguracionTenant(HttpServletRequest request) {
+        try {
+            // Obtener tenant ID del header (multitenant)
+            String tenantId = (String) request.getAttribute("tenantId");
+
+            if (tenantId == null) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "No autorizado - tenantId requerido"));
+            }
+
+            // Buscar tenant
+            Tenant tenant = tenantRepository.findById(tenantId)
+                    .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
+
+            // Crear respuesta con configuración necesaria para validaciones
+            Map<String, Object> config = new HashMap<>();
+            config.put("id", tenant.getId());
+            config.put("nombrePeluqueria", tenant.getNombrePeluqueria());
+            config.put("horaApertura", tenant.getHoraApertura());
+            config.put("horaCierre", tenant.getHoraCierre());
+            config.put("diasLaborables", tenant.getDiasLaborables());
+            config.put("duracionCitaMinutos", tenant.getDuracionCitaMinutos());
+            config.put("telefono", tenant.getTelefono());
+            config.put("direccion", tenant.getDireccion());
+
+            return ResponseEntity.ok(config);
+
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "Error obteniendo configuración: " + e.getMessage()));
         }
     }
 

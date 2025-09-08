@@ -47,4 +47,6 @@ public interface ServicioRepository extends JpaRepository<Servicio, String> { //
 
     @Query("SELECT s FROM Servicio s WHERE LOWER(s.nombre) LIKE LOWER(CONCAT('%', :nombre, '%')) AND s.tenant.id = :tenantId")
     List<Servicio> findByNombreContainingIgnoreCaseAndTenantId(String nombre, String tenantId);
+
+    List<Servicio> findByTenantIdAndActivoTrue(String tenantId);
 }

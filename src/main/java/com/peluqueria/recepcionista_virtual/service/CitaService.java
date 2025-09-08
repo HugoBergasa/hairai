@@ -7,10 +7,13 @@ import com.peluqueria.recepcionista_virtual.dto.CitaDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -44,10 +47,16 @@ public class CitaService {
     // ========================================================================================
 
     /**
-     * ✅ MÉTODO PRINCIPAL para crear cita desde IA - MENSAJES DINÁMICOS
+     * 🔄 MÉTODO CREAR CITA DESDE IA ACTUALIZADO - CON VALIDACIÓN DE HORARIOS
      */
     public Cita crearCita(String tenantId, String telefono, DatosCita datos) {
         try {
+            // Parsear fecha y hora
+            LocalDateTime fechaHora = parsearFechaHora(datos.getFecha(), datos.getHora());
+
+            // 🕐 VALIDACIÓN CRÍTICA: Verificar horario de trabajo ANTES de crear
+            validarHorarioTrabajo(tenantId, fechaHora);
+
             // 1. Obtener el Tenant
             Tenant tenant = tenantRepository.findById(tenantId)
                     .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
@@ -74,9 +83,6 @@ public class CitaService {
                     servicio = servicios.get(0);
                 }
             }
-
-            // 4. Parsear fecha y hora
-            LocalDateTime fechaHora = parsearFechaHora(datos.getFecha(), datos.getHora());
 
             // 5. 🤖 IA AUTOMÁTICA: Buscar empleado disponible inteligentemente
             Empleado empleado = buscarEmpleadoDisponibleConIA(tenantId, fechaHora, servicio);
@@ -201,10 +207,13 @@ public class CitaService {
     }
 
     /**
-     * 🤖 CREAR CITA DESDE DASHBOARD - CON IA AUTOMÁTICA
+     * 🔄 MÉTODO CREATECITA ACTUALIZADO - CON VALIDACIÓN DE HORARIOS
      */
     public CitaDTO createCita(String tenantId, CitaDTO citaDTO) {
         try {
+            // 🕐 VALIDACIÓN CRÍTICA: Verificar horario de trabajo ANTES de crear
+            validarHorarioTrabajo(tenantId, citaDTO.getFechaHora());
+
             // Validar tenant
             Tenant tenant = tenantRepository.findById(tenantId)
                     .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
@@ -238,8 +247,13 @@ public class CitaService {
                 empleado = buscarEmpleadoDisponibleConIA(tenantId, citaDTO.getFechaHora(), servicio);
             }
 
-            // 🤖 IA AUTOMÁTICA: Optimizar horario si hay conflictos
+            // 🤖 IA AUTOMÁTICA: Optimizar horario si hay conflictos (solo ajustes menores)
             LocalDateTime fechaHoraOptimizada = optimizarHorarioConIA(tenantId, citaDTO.getFechaHora(), servicio, empleado);
+
+            // 🕐 VALIDACIÓN FINAL: Verificar horario optimizado también
+            if (!fechaHoraOptimizada.equals(citaDTO.getFechaHora())) {
+                validarHorarioTrabajo(tenantId, fechaHoraOptimizada);
+            }
 
             // Crear cita
             Cita cita = new Cita();
@@ -605,5 +619,76 @@ public class CitaService {
         return citaRepository.findByTenantIdAndFechaHoraBetween(
                 tenantId, inicio, fin
         );
+    }
+
+
+    /**
+     * 🕐 VALIDAR HORARIO DE TRABAJO DEL TENANT - SEGURIDAD BACKEND
+     */
+    private void validarHorarioTrabajo(String tenantId, LocalDateTime fechaHora) {
+        try {
+            // Obtener configuración del tenant
+            Tenant tenant = tenantRepository.findById(tenantId)
+                    .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
+
+            // Validar día laborable
+            DayOfWeek diaSeleccionado = fechaHora.getDayOfWeek();
+            String diasLaborables = tenant.getDiasLaborables();
+
+            if (diasLaborables != null && !diasLaborables.isEmpty()) {
+                Map<String, DayOfWeek> mapaDias = Map.of(
+                        "L", DayOfWeek.MONDAY,
+                        "M", DayOfWeek.TUESDAY,
+                        "X", DayOfWeek.WEDNESDAY,
+                        "J", DayOfWeek.THURSDAY,
+                        "V", DayOfWeek.FRIDAY,
+                        "S", DayOfWeek.SATURDAY,
+                        "D", DayOfWeek.SUNDAY
+                );
+
+                Set<DayOfWeek> diasPermitidos = Arrays.stream(diasLaborables.split(","))
+                        .map(String::trim)
+                        .map(mapaDias::get)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+                if (!diasPermitidos.contains(diaSeleccionado)) {
+                    throw new RuntimeException(
+                            String.format("No se pueden crear citas los %s. Días laborables: %s",
+                                    diaSeleccionado.getDisplayName(TextStyle.FULL, new Locale("es")),
+                                    diasLaborables)
+                    );
+                }
+            }
+
+            // Validar horario de apertura y cierre
+            String horaApertura = tenant.getHoraApertura();
+            String horaCierre = tenant.getHoraCierre();
+
+            if (horaApertura != null && horaCierre != null) {
+                LocalTime horaAperturaTime = LocalTime.parse(horaApertura);
+                LocalTime horaCierreTime = LocalTime.parse(horaCierre);
+                LocalTime horaCita = fechaHora.toLocalTime();
+
+                if (horaCita.isBefore(horaAperturaTime) || horaCita.isAfter(horaCierreTime) || horaCita.equals(horaCierreTime)) {
+                    throw new RuntimeException(
+                            String.format("Horario fuera del horario de trabajo. Horario disponible: %s - %s",
+                                    horaApertura, horaCierre)
+                    );
+                }
+            }
+
+            // Validar que no sea fecha pasada
+            if (fechaHora.isBefore(LocalDateTime.now().withSecond(0).withNano(0))) {
+                throw new RuntimeException("No se pueden crear citas en fechas u horas pasadas");
+            }
+
+        } catch (Exception e) {
+            if (e instanceof RuntimeException) {
+                throw e; // Re-lanzar errores de validación
+            }
+            // En caso de error de parsing u otro, permitir (fallback)
+            System.err.println("Error validando horario de trabajo: " + e.getMessage());
+        }
     }
 }
