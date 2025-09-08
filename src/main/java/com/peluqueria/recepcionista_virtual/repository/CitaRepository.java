@@ -147,9 +147,10 @@ public interface CitaRepository extends JpaRepository<Cita, String> {
      */
     @Query("SELECT c FROM Cita c WHERE c.tenant.id = :tenantId " +
             "AND DATE(c.fechaHora) BETWEEN :fechaInicio AND :fechaFin " +
-            "AND c.estado NOT IN ('CANCELADA', 'COMPLETADA') " +
-            "ORDER BY c.fechaHora")
+            "AND c.estado IN ('CONFIRMADA', 'EN_PROGRESO', 'PENDIENTE')")
     List<Cita> findCitasEnRangoFechas(@Param("tenantId") String tenantId,
                                       @Param("fechaInicio") LocalDate fechaInicio,
                                       @Param("fechaFin") LocalDate fechaFin);
+
+
 }

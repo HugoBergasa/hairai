@@ -23,7 +23,6 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
-import static com.fasterxml.jackson.databind.type.LogicalType.DateTime;
 @Service
 public class OpenAIService {
     private static final Logger logger = LoggerFactory.getLogger(OpenAIService.class);
@@ -38,7 +37,7 @@ public class OpenAIService {
     private TenantRepository tenantRepository;
 
     @Autowired
-    private ServicioRepository servicioRepository; // ✅ AGREGADO: Para consultas dinámicas
+    private ServicioRepository servicioRepository;
 
     @Autowired
     private HorarioEspecialService horarioEspecialService;
@@ -46,7 +45,7 @@ public class OpenAIService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * ✅ PROCESAMIENTO INTELIGENTE - GPT-4 COMO CEREBRO PERSONALIZADO POR TENANT
+     * PROCESAMIENTO INTELIGENTE CORREGIDO - GPT-4 COMO CEREBRO PERSONALIZADO POR TENANT
      */
     public OpenAIResponse procesarMensaje(String mensaje, String tenantId, String callSid) {
         try {
@@ -65,7 +64,7 @@ public class OpenAIService {
                 return crearRespuestaError("Tenant no encontrado");
             }
 
-            // 3. ✅ CONSTRUIR PROMPT PERSONALIZADO CON SERVICIOS DINÁMICOS DESDE BD
+            // 3. CONSTRUIR PROMPT PERSONALIZADO CON SERVICIOS DINÁMICOS DESDE BD
             String systemPrompt = construirPromptPersonalizadoDinamico(tenant);
 
             // 4. LLAMAR A GPT-4 CON CONTEXTO COMPLETO
@@ -74,7 +73,7 @@ public class OpenAIService {
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             Map<String, Object> requestBody = Map.of(
-                    "model", "gpt-4-turbo", // ✅ Usar GPT-4 Turbo que soporta JSON
+                    "model", "gpt-4-turbo",
                     "messages", List.of(
                             Map.of("role", "system", "content", systemPrompt),
                             Map.of("role", "user", "content", mensaje)
@@ -102,11 +101,9 @@ public class OpenAIService {
         }
     }
 
-    // ============================================
-// 2. MODIFICAR EL MÉTODO construirPromptPersonalizadoDinamico()
-// Agregar verificación de cierres al prompt
-// ============================================
-
+    /**
+     * CONSTRUIR PROMPT PERSONALIZADO CON SERVICIOS DE BD REAL
+     */
     private String construirPromptPersonalizadoDinamico(Tenant tenant) {
         String serviciosDisponibles = construirServiciosDesdeDB(tenant.getId());
         String informacionCierres = construirInformacionCierres(tenant.getId());
@@ -154,11 +151,13 @@ public class OpenAIService {
     }
 
     /**
-     * ✅ CONSTRUIR SERVICIOS DINÁMICOS DESDE BD - CADA TENANT SUS PROPIOS SERVICIOS
+     * BD COMPATIBLE: Construir servicios usando query que existe en el schema
      */
     private String construirServiciosDesdeDB(String tenantId) {
         try {
+            // BD COMPATIBLE: Usar método que existe según schema
             List<Servicio> servicios = servicioRepository.findActivosByTenantId(tenantId);
+
 
             if (servicios.isEmpty()) {
                 logger.warn("No hay servicios activos para tenant: {}", tenantId);
@@ -183,6 +182,45 @@ public class OpenAIService {
         } catch (Exception e) {
             logger.error("Error construyendo servicios para tenant {}: {}", tenantId, e.getMessage());
             return "SERVICIOS DISPONIBLES:\n- Error cargando servicios. Consulte disponibilidad.";
+        }
+    }
+
+    /**
+     * CONSTRUIR INFORMACIÓN DE CIERRES ESPECIALES PARA EL PROMPT
+     */
+    private String construirInformacionCierres(String tenantId) {
+        try {
+            List<HorarioEspecial> cierresProximos = horarioEspecialService.obtenerCierresProximos(tenantId, 7);
+
+            if (cierresProximos.isEmpty()) {
+                return "DISPONIBILIDAD: Sin restricciones especiales los proximos dias.";
+            }
+
+            StringBuilder cierresInfo = new StringBuilder("CIERRES ESPECIALES PROXIMOS:\n");
+
+            for (HorarioEspecial cierre : cierresProximos) {
+                cierresInfo.append(String.format(
+                        "- %s a %s: %s (%s)%s\n",
+                        cierre.getFechaInicio(),
+                        cierre.getFechaFin(),
+                        cierre.getTipoCierre().name(), // BD COMPATIBLE: usar name() en lugar de método inexistente
+                        cierre.getMotivo() != null ? cierre.getMotivo() : "Sin motivo especificado",
+                        cierre.getMensajePersonalizado() != null ?
+                                " - " + cierre.getMensajePersonalizado() : ""
+                ));
+            }
+
+            cierresInfo.append("\nIMPORTANTE: Verifica SIEMPRE la disponibilidad antes de confirmar citas.");
+
+            logger.debug("Informacion de cierres construida para tenant {}: {} cierres",
+                    tenantId, cierresProximos.size());
+
+            return cierresInfo.toString();
+
+        } catch (Exception e) {
+            logger.error("Error construyendo informacion de cierres para tenant {}: {}",
+                    tenantId, e.getMessage());
+            return "DISPONIBILIDAD: Verificar disponibilidad antes de confirmar citas.";
         }
     }
 
@@ -238,12 +276,12 @@ public class OpenAIService {
     }
 
     /**
-     * ✅ CREAR RESPUESTA MOCK PERSONALIZADA POR TENANT
+     * CREAR RESPUESTA MOCK PERSONALIZADA POR TENANT
      */
     private OpenAIResponse crearRespuestaMock(String mensaje, String tenantId) {
         OpenAIResponse respuesta = new OpenAIResponse();
 
-        // ✅ Obtener servicios reales para el mock también
+        // Obtener servicios reales para el mock también
         String serviciosInfo = construirServiciosDesdeDB(tenantId);
 
         if (mensaje.toLowerCase().contains("cita") ||
@@ -288,48 +326,8 @@ public class OpenAIService {
     }
 
     /**
-     * 🆕 CONSTRUIR INFORMACIÓN DE CIERRES ESPECIALES PARA EL PROMPT
-     *
-     * MULTITENANT: Solo cierres del tenant actual
-     * ZERO HARDCODING: Mensajes dinámicos desde BD
-     * OpenAI CEREBRO: IA adaptará respuestas según cierres
+     * PROCESAMIENTO CON VERIFICACIÓN DE CIERRES
      */
-    private String construirInformacionCierres(String tenantId) {
-        try {
-            List<HorarioEspecial> cierresProximos = horarioEspecialService.obtenerCierresProximos(tenantId, 7);
-
-            if (cierresProximos.isEmpty()) {
-                return "DISPONIBILIDAD: Sin restricciones especiales los proximos dias.";
-            }
-
-            StringBuilder cierresInfo = new StringBuilder("CIERRES ESPECIALES PROXIMOS:\n");
-
-            for (HorarioEspecial cierre : cierresProximos) {
-                cierresInfo.append(String.format(
-                        "- %s a %s: %s (%s)%s\n",
-                        cierre.getFechaInicio(),
-                        cierre.getFechaFin(),
-                        cierre.getTipoCierre().getDescripcionTecnica(),
-                        cierre.getMotivo() != null ? cierre.getMotivo() : "Sin motivo especificado",
-                        cierre.getMensajePersonalizado() != null ?
-                                " - " + cierre.getMensajePersonalizado() : ""
-                ));
-            }
-
-            cierresInfo.append("\nIMPORTANTE: Verifica SIEMPRE la disponibilidad antes de confirmar citas.");
-
-            logger.debug("Informacion de cierres construida para tenant {}: {} cierres",
-                    tenantId, cierresProximos.size());
-
-            return cierresInfo.toString();
-
-        } catch (Exception e) {
-            logger.error("Error construyendo informacion de cierres para tenant {}: {}",
-                    tenantId, e.getMessage());
-            return "DISPONIBILIDAD: Verificar disponibilidad antes de confirmar citas.";
-        }
-    }
-
     public OpenAIResponse procesarMensajeConVerificacionCierres(String mensaje, String tenantId, String callSid) {
         try {
             logger.info("Procesando mensaje con verificacion de cierres - Tenant: {}, Mensaje: {}",

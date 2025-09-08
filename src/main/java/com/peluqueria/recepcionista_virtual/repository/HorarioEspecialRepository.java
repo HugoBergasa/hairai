@@ -1,5 +1,6 @@
 package com.peluqueria.recepcionista_virtual.repository;
 
+import com.peluqueria.recepcionista_virtual.model.Cita;
 import com.peluqueria.recepcionista_virtual.model.HorarioEspecial;
 import com.peluqueria.recepcionista_virtual.model.TipoCierre;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -215,6 +216,17 @@ public interface HorarioEspecialRepository extends JpaRepository<HorarioEspecial
             "ORDER BY total_cierres DESC")
     List<Object[]> findPeriodosMayorActividad(@Param("tenantId") String tenantId,
                                               @Param("desde") LocalDate desde);
+
+    @Query("SELECT c FROM Cita c WHERE c.tenant.id = :tenantId " +
+            "AND c.fechaHora BETWEEN :inicio AND :fin " +
+            "AND c.estado = 'CANCELADA' " +
+            "AND c.notas LIKE CONCAT('%[Cierre ID: ', :cierreId, ']%')")
+    List<Cita> findCitasCanceladasPorCierre(@Param("tenantId") String tenantId,
+                                            @Param("inicio") LocalDate inicio,
+                                            @Param("fin") LocalDate fin,
+                                            @Param("cierreId") String cierreId);
+
+
 
     // Consultas basicas JPA
     List<HorarioEspecial> findByTenantIdAndActivoTrueOrderByFechaInicio(String tenantId);
