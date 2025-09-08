@@ -4,89 +4,46 @@ package com.peluqueria.recepcionista_virtual.model;
  * Enum que define los diferentes tipos de cierres especiales
  * que puede tener un salón/spa
  *
- * MULTITENANT: Este enum es compartido por todos los tenants
- * ZERO HARDCODING: Los valores se usan dinámicamente desde BD
+ * ZERO HARDCODING: Solo identificadores técnicos puros
+ * MULTITENANT: Las descripciones, iconos y textos vienen de BD o se generan con OpenAI por tenant
+ * OpenAI CEREBRO: Los mensajes se generan dinámicamente según el estilo de cada negocio
  */
 public enum TipoCierre {
 
-    CERRADO_COMPLETO("Cerrado todo el día", "🚫",
-            "El salón estará completamente cerrado"),
+    // ✅ IDENTIFICADORES TÉCNICOS PUROS - SIN TEXTOS HARDCODEADOS
+    CERRADO_COMPLETO,
+    HORARIO_REDUCIDO,
+    SOLO_EMERGENCIAS,
+    EMPLEADO_AUSENTE,
+    SERVICIO_NO_DISPONIBLE;
 
-    HORARIO_REDUCIDO("Horario reducido", "⏰",
-            "El salón tendrá horario especial limitado"),
-
-    SOLO_EMERGENCIAS("Solo emergencias", "🆘",
-            "Solo se atenderán casos de emergencia"),
-
-    EMPLEADO_AUSENTE("Empleado ausente", "👤",
-            "Un empleado específico no estará disponible"),
-
-    SERVICIO_NO_DISPONIBLE("Servicio no disponible", "✂️",
-            "Un servicio específico no estará disponible");
-
-    private final String descripcion;
-    private final String icono;
-    private final String explicacion;
-
-    TipoCierre(String descripcion, String icono, String explicacion) {
-        this.descripcion = descripcion;
-        this.icono = icono;
-        this.explicacion = explicacion;
-    }
-
-    public String getDescripcion() {
-        return descripcion;
-    }
-
-    public String getIcono() {
-        return icono;
-    }
-
-    public String getExplicacion() {
-        return explicacion;
-    }
-
-    public String getDescripcionCompleta() {
-        return icono + " " + descripcion;
-    }
+    // ========================================
+    // MÉTODOS TÉCNICOS (sin hardcoding)
+    // ========================================
 
     /**
-     * Obtiene el color CSS apropiado para cada tipo de cierre
+     * Obtiene una descripción técnica del comportamiento (para logs y debug)
+     * Nota: Estas son descripciones técnicas en inglés para logs, no para usuarios
      */
-    public String getColorCSS() {
+    public String getDescripcionTecnica() {
         switch (this) {
             case CERRADO_COMPLETO:
-                return "red";
-            case HORARIO_REDUCIDO:
-                return "yellow";
-            case SOLO_EMERGENCIAS:
-                return "orange";
-            case EMPLEADO_AUSENTE:
-                return "blue";
-            case SERVICIO_NO_DISPONIBLE:
-                return "purple";
-            default:
-                return "gray";
-        }
-    }
+                return "blocks_all_appointments";
 
-    /**
-     * Obtiene la clase CSS de Tailwind apropiada para cada tipo
-     */
-    public String getTailwindClass() {
-        switch (this) {
-            case CERRADO_COMPLETO:
-                return "bg-red-100 text-red-800 border-red-200";
             case HORARIO_REDUCIDO:
-                return "bg-yellow-100 text-yellow-800 border-yellow-200";
+                return "restricts_to_specified_hours";
+
             case SOLO_EMERGENCIAS:
-                return "bg-orange-100 text-orange-800 border-orange-200";
+                return "allows_only_emergency_appointments";
+
             case EMPLEADO_AUSENTE:
-                return "bg-blue-100 text-blue-800 border-blue-200";
+                return "blocks_specific_employees";
+
             case SERVICIO_NO_DISPONIBLE:
-                return "bg-purple-100 text-purple-800 border-purple-200";
+                return "blocks_specific_services";
+
             default:
-                return "bg-gray-100 text-gray-800 border-gray-200";
+                return "unknown_behavior";
         }
     }
 
@@ -112,39 +69,43 @@ public enum TipoCierre {
     }
 
     /**
-     * Verifica si este tipo de cierre bloquea completamente las citas
+     * Verifica si este tipo bloquea completamente las citas
      */
     public boolean bloqueaCompletamente() {
         return this == CERRADO_COMPLETO;
     }
 
     /**
-     * Obtiene un mensaje por defecto para la IA basado en el tipo de cierre
+     * Verifica si requiere horarios específicos
      */
-    public String getMensajeDefaultIA() {
-        switch (this) {
-            case CERRADO_COMPLETO:
-                return "Lo siento, estamos cerrados ese día. ¿Te gustaría agendar para otro día?";
-
-            case HORARIO_REDUCIDO:
-                return "Ese día tenemos horario especial. ¿Te confirmo las horas disponibles?";
-
-            case SOLO_EMERGENCIAS:
-                return "Ese día solo atendemos emergencias. ¿Es tu caso urgente o prefieres otro día?";
-
-            case EMPLEADO_AUSENTE:
-                return "Ese profesional no estará disponible ese día. ¿Te gustaría con otro de nuestros especialistas?";
-
-            case SERVICIO_NO_DISPONIBLE:
-                return "Ese servicio no estará disponible ese día. ¿Te interesa algún otro de nuestros tratamientos?";
-
-            default:
-                return "No tenemos disponibilidad ese día. ¿Te viene bien otra fecha?";
-        }
+    public boolean requiereHorariosEspecificos() {
+        return this == HORARIO_REDUCIDO;
     }
 
     /**
-     * Convierte un string a TipoCierre (útil para APIs)
+     * Verifica si solo permite emergencias
+     */
+    public boolean soloEmergencias() {
+        return this == SOLO_EMERGENCIAS;
+    }
+
+    /**
+     * Verifica si afecta empleados específicos
+     */
+    public boolean afectaEmpleadosEspecificos() {
+        return this == EMPLEADO_AUSENTE;
+    }
+
+    /**
+     * Verifica si afecta servicios específicos
+     */
+    public boolean afectaServiciosEspecificos() {
+        return this == SERVICIO_NO_DISPONIBLE;
+    }
+
+    /**
+     * Convierte un string a TipoCierre (solo acepta nombres técnicos)
+     * Ejemplo: "CERRADO_COMPLETO" -> TipoCierre.CERRADO_COMPLETO
      */
     public static TipoCierre fromString(String tipo) {
         if (tipo == null || tipo.trim().isEmpty()) {
@@ -154,18 +115,16 @@ public enum TipoCierre {
         try {
             return TipoCierre.valueOf(tipo.toUpperCase());
         } catch (IllegalArgumentException e) {
-            // Si no encuentra match exacto, busca por descripción
-            for (TipoCierre tipoCierre : values()) {
-                if (tipoCierre.descripcion.toLowerCase().contains(tipo.toLowerCase())) {
-                    return tipoCierre;
-                }
-            }
-            return null;
+            return null; // No hacer búsquedas por descripción - solo nombres técnicos
         }
     }
 
+    /**
+     * Retorna el nombre técnico del enum para logging y APIs
+     * Ejemplo: TipoCierre.CERRADO_COMPLETO.toString() -> "CERRADO_COMPLETO"
+     */
     @Override
     public String toString() {
-        return descripcion;
+        return name(); // Retorna el nombre técnico del enum
     }
 }
