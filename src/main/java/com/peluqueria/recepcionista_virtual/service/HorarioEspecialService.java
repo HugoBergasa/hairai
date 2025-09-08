@@ -515,7 +515,6 @@ public class HorarioEspecialService {
             logger.info("Verificando citas existentes para cierre - Tenant: {}, Fechas: {} a {}",
                     tenantId, fechaInicio, fechaFin);
 
-            // CORREGIDO: Usar la query corregida
             List<Cita> citasAfectadas = citaRepository.findCitasEnRangoFechas(
                     tenantId, fechaInicio, fechaFin
             );
@@ -526,7 +525,21 @@ public class HorarioEspecialService {
             }
 
             logger.warn("CITAS AFECTADAS: {} citas encontradas en rango de cierre", citasAfectadas.size());
-            return ResultadoVerificacionCitas.conCitasAfectadas(citasAfectadas);
+
+            // 🔧 CORRECCIÓN: Convertir entidades a DTOs para evitar recursión
+            List<Map<String, Object>> citasDTO = citasAfectadas.stream()
+                    .map(cita -> {
+                        Map<String, Object> citaData = new HashMap<>();
+                        citaData.put("id", cita.getId());
+                        citaData.put("clienteNombre", cita.getCliente() != null ? cita.getCliente().getNombre() : "Cliente");
+                        citaData.put("servicio", cita.getServicio() != null ? cita.getServicio().getNombre() : "Servicio");
+                        citaData.put("fechaHora", cita.getFechaHora().toString());
+                        citaData.put("estado", cita.getEstado().toString());
+                        return citaData;
+                    })
+                    .collect(Collectors.toList());
+
+            return ResultadoVerificacionCitas.conCitasAfectadasDTO(citasDTO);
 
         } catch (Exception e) {
             logger.error("Error verificando citas existentes: {}", e.getMessage(), e);
