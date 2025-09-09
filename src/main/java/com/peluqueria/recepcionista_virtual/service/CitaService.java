@@ -55,7 +55,7 @@ public class CitaService {
 
     // ✅ NUEVA DEPENDENCIA CRÍTICA - ZERO HARDCODING
     @Autowired
-    private ConfiguracionTenantRepository configuracionRepository;
+    private TenantConfigService tenantConfigService;
 
     @Autowired
     private EmpleadoServicioValidationService empleadoServicioValidationService;
@@ -669,11 +669,10 @@ public class CitaService {
 
     /**
      * ZERO HARDCODING: Obtener mensaje configurable por tenant
-     * Si no existe configuración, usar mensaje por defecto
      */
     private String obtenerMensajeConfigurable(String tenantId, String clave, String mensajePorDefecto) {
         try {
-            return configuracionRepository.obtenerValor(tenantId, clave, mensajePorDefecto);
+            return tenantConfigService.obtenerValor(tenantId, clave, mensajePorDefecto);
         } catch (Exception e) {
             return mensajePorDefecto;
         }
@@ -684,12 +683,11 @@ public class CitaService {
      */
     private String obtenerConfiguracion(String tenantId, String clave, String porDefecto) {
         try {
-            return configuracionRepository.obtenerValor(tenantId, clave, porDefecto);
+            return tenantConfigService.obtenerValor(tenantId, clave, porDefecto);
         } catch (Exception e) {
             return porDefecto;
         }
     }
-
     // ========================================================================================
     // 🤖 MÉTODOS IA AUTOMÁTICA - CEREBRO INTELIGENTE (MANTENIDOS)
     // ========================================================================================
