@@ -154,13 +154,13 @@ public interface CitaRepository extends JpaRepository<Cita, String> {
                                       @Param("fechaFin") LocalDate fechaFin);
 
     /**
-     * CRÍTICO: Detecta conflictos de empleados para validaciones
+     * CRÍTICO: Detecta conflictos de empleados para validaciones - CORREGIDO
      * Encuentra citas que se solapan con un horario específico
      * 100% MULTITENANT: Filtra por tenant automáticamente a través de empleado
      */
     @Query("SELECT c FROM Cita c WHERE c.empleado.id = :empleadoId " +
             "AND c.fechaHora < :fin " +
-            "AND FUNCTION('DATE_ADD', c.fechaHora, INTERVAL c.duracionMinutos MINUTE) > :inicio " +
+            "AND c.fechaHora + (c.duracionMinutos * INTERVAL '1 MINUTE') > :inicio " +
             "AND c.estado IN ('CONFIRMADA', 'COMPLETADA', 'EN_PROGRESO') " +
             "AND (:excludeId IS NULL OR c.id != :excludeId)")
     List<Cita> findCitasEmpleadoEnRango(@Param("empleadoId") String empleadoId,

@@ -2,6 +2,7 @@ package com.peluqueria.recepcionista_virtual.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "configuracion_tenant",
@@ -9,8 +10,8 @@ import java.time.LocalDateTime;
 public class ConfiguracionTenant {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "id")
+    private String id;  // ✅ CAMBIADO: De Long a String
 
     @Column(name = "tenant_id", nullable = false)
     private String tenantId;
@@ -57,6 +58,14 @@ public class ConfiguracionTenant {
         this.categoria = categoria;
     }
 
+    // ✅ NUEVO: Generar ID automáticamente antes de persistir
+    @PrePersist
+    public void generarId() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID().toString();
+        }
+    }
+
     // Enum para tipos de dato
     public enum TipoDato {
         STRING, INTEGER, BOOLEAN, JSON, DECIMAL, TIME, DATE
@@ -97,11 +106,11 @@ public class ConfiguracionTenant {
     }
 
     // Getters y Setters
-    public Long getId() {
+    public String getId() {  // ✅ CAMBIADO: De Long a String
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(String id) {  // ✅ CAMBIADO: De Long a String
         this.id = id;
     }
 
