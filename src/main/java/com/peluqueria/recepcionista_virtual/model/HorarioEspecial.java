@@ -101,7 +101,8 @@ public class HorarioEspecial {
     // CONSTRUCTORES
     // ========================================
 
-    public HorarioEspecial() {}
+    public HorarioEspecial() {
+    }
 
     public HorarioEspecial(String tenantId, LocalDate fechaInicio, LocalDate fechaFin,
                            TipoCierre tipoCierre, String motivo) {
@@ -367,5 +368,32 @@ public class HorarioEspecial {
                 ", motivo='" + motivo + '\'' +
                 ", activo=" + activo +
                 '}';
+    }
+
+    public boolean afectaHorario(LocalDateTime fechaHora) {
+        LocalDate fechaConsulta = fechaHora.toLocalDate();
+
+        // Verificar si la fecha está en el rango del cierre
+        if (fechaConsulta.isBefore(this.fechaInicio) || fechaConsulta.isAfter(this.fechaFin)) {
+            return false;
+        }
+
+        // ✅ CORRECCIÓN: Comparar enum correctamente
+        // Si es cierre completo, afecta todo el día
+        if (TipoCierre.CERRADO_COMPLETO.equals(this.tipoCierre)) {
+            return true;
+        }
+
+        // Si es horario reducido, verificar si afecta la hora específica
+        if (TipoCierre.HORARIO_REDUCIDO.equals(this.tipoCierre)) {
+            if (this.horarioInicio != null && this.horarioFin != null) {
+                LocalTime horaConsulta = fechaHora.toLocalTime();
+                // Si la consulta está fuera del horario reducido, está afectada
+                return horaConsulta.isBefore(this.horarioInicio) || horaConsulta.isAfter(this.horarioFin);
+            }
+        }
+
+        // Para otros tipos de cierre, asumir que afecta
+        return true;
     }
 }

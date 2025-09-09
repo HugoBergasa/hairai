@@ -33,6 +33,12 @@ public interface HorarioEspecialRepository extends JpaRepository<HorarioEspecial
     List<HorarioEspecial> findCierresParaFecha(@Param("tenantId") String tenantId,
                                                @Param("fecha") LocalDate fecha);
 
+    @Query("SELECT h FROM HorarioEspecial h WHERE h.tenantId = :tenantId " +
+            "AND h.activo = true " +
+            "AND :fecha BETWEEN h.fechaInicio AND h.fechaFin")
+    List<HorarioEspecial> findActivosByTenantAndFecha(@Param("tenantId") String tenantId,
+                                                      @Param("fecha") LocalDate fecha);
+
     /**
      * Obtener todos los cierres en un rango de fechas
      */

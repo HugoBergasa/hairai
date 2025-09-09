@@ -255,5 +255,21 @@ public interface CitaRepository extends JpaRepository<Cita, String> {
     Optional<Servicio> findServicioActivoByIdAndTenant(@Param("servicioId") String servicioId,
                                                        @Param("tenantId") String tenantId);
 
+    @Query("SELECT c FROM Cita c WHERE c.cliente.id = :clienteId " +
+            "AND c.tenant.id = :tenantId " +
+            "AND c.estado IN ('CONFIRMADA', 'COMPLETADA') " +
+            "ORDER BY c.fechaHora DESC")
+    List<Cita> findByClienteIdAndTenantIdOrderByFechaHoraDesc(@Param("clienteId") String clienteId,
+                                                              @Param("tenantId") String tenantId);
+
+    @Query("SELECT c FROM Cita c WHERE c.tenant.id = :tenantId " +
+            "AND c.fechaHora >= :fechaInicio " +
+            "AND c.fechaHora <= :fechaFin " +
+            "AND c.estado IN ('CONFIRMADA', 'EN_PROGRESO') " +
+            "ORDER BY c.fechaHora")
+    List<Cita> findCitasActivasEnRango(@Param("tenantId") String tenantId,
+                                       @Param("fechaInicio") LocalDateTime fechaInicio,
+                                       @Param("fechaFin") LocalDateTime fechaFin);
+
 
 }

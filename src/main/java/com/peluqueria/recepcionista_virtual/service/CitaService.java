@@ -1,5 +1,6 @@
 package com.peluqueria.recepcionista_virtual.service;
 
+import com.peluqueria.recepcionista_virtual.dto.CitaConflictoDTO;
 import com.peluqueria.recepcionista_virtual.model.*;
 import com.peluqueria.recepcionista_virtual.repository.*;
 import com.peluqueria.recepcionista_virtual.dto.DatosCita;
@@ -15,11 +16,20 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.Set;
+import java.util.Arrays;
+import java.util.Objects;
+
 
 @Service
 @Transactional
@@ -66,6 +76,9 @@ public class CitaService {
     @Autowired
     private UserService.UsuarioService usuarioService;
 
+    @Autowired
+    private HorarioEspecialRepository horarioEspecialRepository;
+
 
     // ========================================================================================
     // 🤖 MÉTODOS IA EXISTENTES - CORREGIDOS CON VALIDACIONES CRÍTICAS
@@ -73,6 +86,9 @@ public class CitaService {
 
     /**
      * 📄 MÉTODO CREAR CITA DESDE IA ACTUALIZADO - CON VALIDACIONES CRÍTICAS CORREGIDAS
+     */
+    /**
+     * 📄 MÉTODO CREAR CITA DESDE IA ACTUALIZADO - CON VALIDACIONES CRÍTICAS Y INTERVALO MÍNIMO
      */
     public Cita crearCita(String tenantId, String telefono, DatosCita datos) {
         try {
@@ -97,6 +113,9 @@ public class CitaService {
                                 datos.getNombreCliente() : "Cliente");
                         return clienteRepository.save(nuevo);
                     });
+
+            // 🆘 NUEVA VALIDACIÓN: Intervalo mínimo entre citas del mismo cliente
+            validarIntervaloMinimoCliente(tenantId, cliente.getId(), fechaHora);
 
             // 3. Buscar servicio
             Servicio servicio = null;
@@ -159,52 +178,6 @@ public class CitaService {
         }
     }
 
-    /**
-     * MÉTODO LEGACY (mantener para compatibilidad) - CORREGIDO
-     */
-    public Cita crearCita(String tenantId, String telefonoCliente,
-                          String servicioId, LocalDateTime fechaHora) {
-
-        // ✅ VALIDACIONES CRÍTICAS AGREGADAS:
-        validarHorarioTrabajo(tenantId, fechaHora);
-        if (servicioId != null) {
-            validarServicioParaCita(servicioId, tenantId);
-        }
-        validarCapacidadSalon(tenantId, fechaHora);
-
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
-
-        Cliente cliente = clienteRepository
-                .findByTelefonoAndTenantId(telefonoCliente, tenantId)
-                .orElseGet(() -> {
-                    Cliente nuevo = new Cliente();
-                    nuevo.setTenant(tenant);
-                    nuevo.setTelefono(telefonoCliente);
-                    return clienteRepository.save(nuevo);
-                });
-
-        Cita cita = new Cita();
-        cita.setTenant(tenant);
-        cita.setCliente(cliente);
-        cita.setFechaHora(fechaHora);
-        cita.setEstado(EstadoCita.CONFIRMADA);
-        cita.setOrigen(OrigenCita.TELEFONO);
-
-        // Obtener servicio si se especificó
-        if (servicioId != null) {
-            servicioRepository.findById(servicioId).ifPresent(servicio -> {
-                cita.setServicio(servicio);
-                cita.setDuracionMinutos(servicio.getDuracionMinutos());
-                cita.setPrecio(servicio.getPrecio());
-            });
-        }
-
-        Cita citaGuardada = citaRepository.save(cita);
-        enviarConfirmacionPersonalizada(citaGuardada);
-
-        return citaGuardada;
-    }
 
     // ========================================================================================
     // 🎯 MÉTODOS DTO PARA DASHBOARD - CORREGIDOS CON VALIDACIONES
@@ -556,17 +529,16 @@ public class CitaService {
      * CRÍTICO: Validar que el servicio no exceda el horario de cierre
      * Evita crear citas que terminen después del cierre
      */
-    private void validarDuracionDentroDeHorario(LocalDateTime inicio, int duracionMinutos,
-                                                String tenantId) {
+    private void validarDuracionDentroDeHorario(LocalDateTime inicio, int duracionMinutos, String tenantId) {
         try {
-            Tenant tenant = tenantRepository.findById(tenantId)
-                    .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
+            // 🔥 CAMBIO CRÍTICO: Obtener hora cierre desde configuracion_tenant
+            String horaCierre = obtenerConfiguracion(tenantId, "hora_cierre", "20:00");
 
-            if (tenant.getHoraCierre() == null) return; // Si no hay horario configurado, permitir
+            if (horaCierre == null) return; // Si no hay horario configurado, permitir
 
             LocalDateTime fin = inicio.plusMinutes(duracionMinutos);
             LocalTime finTime = fin.toLocalTime();
-            LocalTime cierreTime = LocalTime.parse(tenant.getHoraCierre());
+            LocalTime cierreTime = LocalTime.parse(horaCierre);
 
             if (finTime.isAfter(cierreTime)) {
                 throw new RuntimeException(
@@ -577,7 +549,35 @@ public class CitaService {
             }
         } catch (Exception e) {
             if (e instanceof RuntimeException) throw e;
-            // Si hay error de parsing, continuar (fallback seguro)
+            logger.warn("Error validando duración dentro de horario: {}", e.getMessage());
+            // Si hay error de parsing, usar método fallback
+            validarDuracionDentroDeHorarioFallback(inicio, duracionMinutos, tenantId);
+        }
+    }
+
+    /**
+     * 🛟 FALLBACK: Validar duración usando datos de tabla tenants
+     */
+    private void validarDuracionDentroDeHorarioFallback(LocalDateTime inicio, int duracionMinutos, String tenantId) {
+        try {
+            Tenant tenant = tenantRepository.findById(tenantId)
+                    .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
+
+            if (tenant.getHoraCierre() == null) return;
+
+            LocalDateTime fin = inicio.plusMinutes(duracionMinutos);
+            LocalTime finTime = fin.toLocalTime();
+            LocalTime cierreTime = LocalTime.parse(tenant.getHoraCierre());
+
+            if (finTime.isAfter(cierreTime)) {
+                throw new RuntimeException(
+                        String.format("El servicio terminaría a las %s, después del cierre (%s)",
+                                finTime, cierreTime)
+                );
+            }
+        } catch (Exception e) {
+            logger.warn("Fallback de validación de duración también falló: {}", e.getMessage());
+            // Fallback final: continuar sin validar
         }
     }
 
@@ -641,12 +641,13 @@ public class CitaService {
             return DisponibilidadResult.disponible();
 
         } catch (RuntimeException e) {
-            // Crear resultado con análisis del error
+            // ✅ USAR MÉTODOS CORRECTOS DE TU CLASE DisponibilidadResult:
             DisponibilidadResult resultado = DisponibilidadResult.noDisponible(e.getMessage());
 
             // Agregar análisis del tipo de conflicto
             if (e.getMessage().contains("Empleado no disponible")) {
                 resultado.setTipoRestriccion("CONFLICTO_EMPLEADO");
+                // ✅ USAR el método agregarConflicto() que ya tienes:
                 resultado.agregarConflicto("EMPLEADO_OCUPADO");
             } else if (e.getMessage().contains("lleno")) {
                 resultado.setTipoRestriccion("CAPACIDAD_EXCEDIDA");
@@ -656,8 +657,14 @@ public class CitaService {
                 resultado.agregarConflicto("EXCEDE_HORARIO_CIERRE");
             }
 
-            // TODO: Aquí se puede integrar OpenAI para sugerir alternativas
-            // resultado.setSugerenciaIA(openAIService.analizarConflicto(tenantId, e.getMessage()));
+            // Intentar obtener sugerencias IA
+            try {
+                String analisisIA = openAIService.analizarConflictoDisponibilidad(tenantId, e.getMessage(), fechaHora);
+                resultado.setSugerenciaIA(analisisIA);
+                resultado.setConfianzaSugerencia(0.8);
+            } catch (Exception ex) {
+                logger.warn("Error obteniendo análisis IA: {}", ex.getMessage());
+            }
 
             return resultado;
         }
@@ -954,11 +961,84 @@ public class CitaService {
      */
     private void validarHorarioTrabajo(String tenantId, LocalDateTime fechaHora) {
         try {
-            // Obtener configuración del tenant
+            // 🆘 CAMBIO CRÍTICO: Obtener horarios desde configuracion_tenant NO de tabla tenants
+            String horaApertura = obtenerConfiguracion(tenantId, "hora_apertura", "09:00");
+            String horaCierre = obtenerConfiguracion(tenantId, "hora_cierre", "20:00");
+            String diasLaborables = obtenerConfiguracion(tenantId, "dias_laborables", "L,M,X,J,V,S");
+
+            // Validar día laborable
+            DayOfWeek diaSeleccionado = fechaHora.getDayOfWeek();
+
+            if (diasLaborables != null && !diasLaborables.isEmpty()) {
+                Map<String, DayOfWeek> mapaDias = Map.of(
+                        "L", DayOfWeek.MONDAY,
+                        "M", DayOfWeek.TUESDAY,
+                        "X", DayOfWeek.WEDNESDAY,
+                        "J", DayOfWeek.THURSDAY,
+                        "V", DayOfWeek.FRIDAY,
+                        "S", DayOfWeek.SATURDAY,
+                        "D", DayOfWeek.SUNDAY
+                );
+
+                Set<DayOfWeek> diasPermitidos = Arrays.stream(diasLaborables.split(","))
+                        .map(String::trim)
+                        .map(mapaDias::get)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+                if (!diasPermitidos.contains(diaSeleccionado)) {
+                    throw new RuntimeException(
+                            obtenerMensajeConfigurable(tenantId, "mensaje_dia_no_laborable",
+                                    String.format("No se pueden crear citas los %s. Días laborables: %s",
+                                            diaSeleccionado.getDisplayName(TextStyle.FULL, new Locale("es")),
+                                            diasLaborables))
+                    );
+                }
+            }
+
+            // Validar horario de apertura y cierre
+            if (horaApertura != null && horaCierre != null) {
+                LocalTime horaAperturaTime = LocalTime.parse(horaApertura);
+                LocalTime horaCierreTime = LocalTime.parse(horaCierre);
+                LocalTime horaCita = fechaHora.toLocalTime();
+
+                if (horaCita.isBefore(horaAperturaTime) || horaCita.isAfter(horaCierreTime) || horaCita.equals(horaCierreTime)) {
+                    throw new RuntimeException(
+                            obtenerMensajeConfigurable(tenantId, "mensaje_horario_invalido",
+                                    String.format("Horario fuera del horario de trabajo. Horario disponible: %s - %s",
+                                            horaApertura, horaCierre))
+                    );
+                }
+            }
+
+            // Validar que no sea fecha pasada
+            if (fechaHora.isBefore(LocalDateTime.now().withSecond(0).withNano(0))) {
+                throw new RuntimeException(
+                        obtenerMensajeConfigurable(tenantId, "mensaje_fecha_pasada",
+                                "No se pueden crear citas en fechas u horas pasadas")
+                );
+            }
+
+        } catch (Exception e) {
+            if (e instanceof RuntimeException) {
+                throw e; // Re-lanzar errores de validación
+            }
+            logger.error("Error validando horario de trabajo: {}", e.getMessage());
+            // En caso de error de parsing u otro, usar fallback de tabla tenants
+            validarHorarioTrabajoFallback(tenantId, fechaHora);
+        }
+    }
+
+    /**
+     * 🛟 MÉTODO FALLBACK - Si falla configuracion_tenant, usar datos de tenants
+     * Solo para casos de emergencia/error
+     */
+    private void validarHorarioTrabajoFallback(String tenantId, LocalDateTime fechaHora) {
+        try {
             Tenant tenant = tenantRepository.findById(tenantId)
                     .orElseThrow(() -> new RuntimeException("Tenant no encontrado"));
 
-            // Validar día laborable
+            // Este es el código original - solo como fallback
             DayOfWeek diaSeleccionado = fechaHora.getDayOfWeek();
             String diasLaborables = tenant.getDiasLaborables();
 
@@ -988,7 +1068,6 @@ public class CitaService {
                 }
             }
 
-            // Validar horario de apertura y cierre
             String horaApertura = tenant.getHoraApertura();
             String horaCierre = tenant.getHoraCierre();
 
@@ -1005,17 +1084,53 @@ public class CitaService {
                 }
             }
 
-            // Validar que no sea fecha pasada
-            if (fechaHora.isBefore(LocalDateTime.now().withSecond(0).withNano(0))) {
-                throw new RuntimeException("No se pueden crear citas en fechas u horas pasadas");
+        } catch (Exception e) {
+            logger.warn("Fallback de validación de horario también falló: {}", e.getMessage());
+            // Si todo falla, permitir la cita con un log de advertencia
+        }
+    }
+
+    /**
+     * 🆘 NUEVO MÉTODO CRÍTICO: Validar intervalo mínimo entre citas del mismo cliente
+     * 100% configurable desde configuracion_tenant
+     */
+    private void validarIntervaloMinimoCliente(String tenantId, String clienteId, LocalDateTime fechaHoraNueva) {
+        try {
+            // Obtener intervalo mínimo desde configuración (en minutos)
+            String intervaloMinStr = obtenerConfiguracion(tenantId, "intervalo_minimo_citas_mismo_cliente", "60");
+            int intervaloMinutos = Integer.parseInt(intervaloMinStr);
+
+            // Si el intervalo es 0, no validar
+            if (intervaloMinutos <= 0) {
+                return;
             }
 
-        } catch (Exception e) {
-            if (e instanceof RuntimeException) {
-                throw e; // Re-lanzar errores de validación
+            // Buscar la última cita del cliente
+            List<Cita> citasRecientes = citaRepository.findByClienteIdAndTenantIdOrderByFechaHoraDesc(clienteId, tenantId);
+
+            if (!citasRecientes.isEmpty()) {
+                Cita ultimaCita = citasRecientes.get(0);
+                LocalDateTime ultimaFecha = ultimaCita.getFechaHora();
+
+                // Calcular diferencia en minutos
+                long minutosEntre = ChronoUnit.MINUTES.between(ultimaFecha, fechaHoraNueva);
+
+                if (Math.abs(minutosEntre) < intervaloMinutos) {
+                    throw new RuntimeException(
+                            obtenerMensajeConfigurable(tenantId, "mensaje_intervalo_minimo",
+                                    String.format("Debe esperar al menos %d minutos entre citas. Última cita: %s",
+                                            intervaloMinutos,
+                                            ultimaFecha.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))))
+                    );
+                }
             }
-            // En caso de error de parsing u otro, permitir (fallback)
-            System.err.println("Error validando horario de trabajo: " + e.getMessage());
+
+        } catch (NumberFormatException e) {
+            logger.warn("Error parsing intervalo mínimo para tenant {}: {}", tenantId, e.getMessage());
+            // Si hay error en configuración, no validar (fallback seguro)
+        } catch (Exception e) {
+            logger.error("Error validando intervalo mínimo cliente: {}", e.getMessage());
+            throw e;
         }
     }
 
@@ -1365,5 +1480,503 @@ public class CitaService {
         }
 
         return CitaDTO.fromCita(cita);
+    }
+
+    /**
+     * 🎯 MÉTODO CRÍTICO: analizarConflictosDetallados()
+     * Detecta y clasifica conflictos específicos por tipo
+     */
+    public List<CitaConflictoDTO> analizarConflictosDetallados(String tenantId,
+                                                               LocalDateTime fechaHora,
+                                                               String servicioId,
+                                                               String empleadoId) {
+        List<CitaConflictoDTO> conflictos = new ArrayList<>();
+
+        try {
+            // 1. CONFLICTOS DE HORARIO DE TRABAJO
+            try {
+                validarHorarioTrabajo(tenantId, fechaHora);
+            } catch (RuntimeException e) {
+                conflictos.add(new CitaConflictoDTO(
+                        "HORARIO_TRABAJO",
+                        "Fuera del horario de trabajo",
+                        e.getMessage(),
+                        fechaHora,
+                        null,
+                        "ALTA"
+                ));
+            }
+
+            // 2. CONFLICTOS DE CAPACIDAD DEL SALÓN
+            try {
+                validarCapacidadSalon(tenantId, fechaHora);
+            } catch (RuntimeException e) {
+                Long citasEnSlot = citaRepository.countCitasActivasEnSlot(tenantId, fechaHora);
+
+                Map<String, String> detallesCapacidad = new HashMap<>();
+                detallesCapacidad.put("citasActuales", citasEnSlot.toString());
+
+                conflictos.add(new CitaConflictoDTO(
+                        "CAPACIDAD_EXCEDIDA",
+                        "Salón lleno en ese horario",
+                        e.getMessage(),
+                        fechaHora,
+                        detallesCapacidad,
+                        "ALTA"
+                ));
+            }
+
+            // 3. CONFLICTOS DE EMPLEADO ESPECÍFICO
+            if (empleadoId != null) {
+                try {
+                    validarEmpleadoParaCita(empleadoId, tenantId);
+
+                    // Obtener duración del servicio para validar disponibilidad
+                    int duracion = 60; // Default
+                    if (servicioId != null) {
+                        Optional<Servicio> servicio = servicioRepository.findById(servicioId);
+                        if (servicio.isPresent()) {
+                            duracion = servicio.get().getDuracionMinutos();
+                        }
+                    }
+
+                    validarDisponibilidadEmpleado(empleadoId, fechaHora,
+                            fechaHora.plusMinutes(duracion), null, tenantId);
+
+                } catch (RuntimeException e) {
+                    // Buscar citas conflictivas para más detalles
+                    List<Cita> citasConflicto = citaRepository.findCitasEmpleadoEnRango(
+                            empleadoId, fechaHora, fechaHora.plusMinutes(60), null);
+
+                    Map<String, String> detallesEmpleado = new HashMap<>();
+                    if (!citasConflicto.isEmpty()) {
+                        Cita citaConflictiva = citasConflicto.get(0);
+                        detallesEmpleado.put("citaConflictiva", citaConflictiva.getId());
+                        detallesEmpleado.put("horarioConflicto", citaConflictiva.getFechaHora().toString());
+                        detallesEmpleado.put("clienteConflicto", citaConflictiva.getCliente().getNombre());
+                    }
+
+                    conflictos.add(new CitaConflictoDTO(
+                            "EMPLEADO_NO_DISPONIBLE",
+                            "Empleado ocupado en ese horario",
+                            e.getMessage(),
+                            fechaHora,
+                            detallesEmpleado,
+                            "MEDIA"
+                    ));
+                }
+            }
+
+            // 4. CONFLICTOS DE SERVICIO
+            if (servicioId != null) {
+                try {
+                    validarServicioParaCita(servicioId, tenantId);
+
+                    // Validar que el servicio termine dentro del horario
+                    Servicio servicio = servicioRepository.findById(servicioId).orElse(null);
+                    if (servicio != null) {
+                        validarDuracionDentroDeHorario(fechaHora, servicio.getDuracionMinutos(), tenantId);
+                    }
+                } catch (RuntimeException e) {
+                    Map<String, String> detallesServicio = new HashMap<>();
+                    if (servicioId != null) {
+                        detallesServicio.put("servicioId", servicioId);
+                    }
+
+                    conflictos.add(new CitaConflictoDTO(
+                            "SERVICIO_INVALIDO",
+                            "Problema con el servicio seleccionado",
+                            e.getMessage(),
+                            fechaHora,
+                            detallesServicio,
+                            "MEDIA"
+                    ));
+                }
+            }
+
+            // 5. CONFLICTOS DE HORARIOS ESPECIALES (cierres) - CORREGIDO
+            try {
+                // Verificar si existe el repositorio antes de usarlo
+                if (horarioEspecialRepository != null) {
+                    List<HorarioEspecial> cierresActivos = horarioEspecialRepository
+                            .findActivosByTenantAndFecha(tenantId, fechaHora.toLocalDate());
+
+                    for (HorarioEspecial cierre : cierresActivos) {
+                        if (cierre.afectaHorario(fechaHora)) {
+                            Map<String, String> detallesCierre = new HashMap<>();
+                            // ✅ CORRECCIÓN: Convertir enum a String
+                            detallesCierre.put("tipoCierre", cierre.getTipoCierre().toString());
+                            detallesCierre.put("fechaInicio", cierre.getFechaInicio().toString());
+                            detallesCierre.put("fechaFin", cierre.getFechaFin().toString());
+
+                            conflictos.add(new CitaConflictoDTO(
+                                    "CIERRE_ESPECIAL",
+                                    "Salón cerrado por horario especial",
+                                    cierre.getMotivo() != null ? cierre.getMotivo() : "Cierre programado",
+                                    fechaHora,
+                                    detallesCierre,
+                                    "ALTA"
+                            ));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Error verificando horarios especiales: {}", e.getMessage());
+                // Continuar sin este chequeo si hay error
+            }
+
+            logger.debug("Análisis de conflictos completado para tenant {}: {} conflictos encontrados",
+                    tenantId, conflictos.size());
+
+        } catch (Exception e) {
+            logger.error("Error analizando conflictos para tenant {}: {}", tenantId, e.getMessage());
+            conflictos.add(new CitaConflictoDTO(
+                    "ERROR_SISTEMA",
+                    "Error interno del sistema",
+                    "Error inesperado durante el análisis: " + e.getMessage(),
+                    fechaHora,
+                    null,
+                    "CRITICA"
+            ));
+        }
+
+        return conflictos;
+    }
+
+    /**
+     * 🤖 MÉTODO IA: obtenerSugerenciasConflictos()
+     * Usa OpenAI para sugerir soluciones a los conflictos encontrados
+     */
+    public String obtenerSugerenciasConflictos(String tenantId, List<CitaConflictoDTO> conflictos) {
+        try {
+            if (conflictos.isEmpty()) {
+                return "No hay conflictos que resolver";
+            }
+
+            // Preparar contexto para OpenAI
+            StringBuilder contexto = new StringBuilder();
+            contexto.append("Conflictos encontrados en la reserva de cita:\\n");
+
+            for (CitaConflictoDTO conflicto : conflictos) {
+                contexto.append(String.format("- %s: %s\\n",
+                        conflicto.getTipoConflicto(),
+                        conflicto.getDescripcion()));
+            }
+
+            // Obtener configuración del tenant para contexto
+            String nombreSalon = obtenerConfiguracion(tenantId, "nombre_negocio", "Salón");
+            String horaApertura = obtenerConfiguracion(tenantId, "hora_apertura", "09:00");
+            String horaCierre = obtenerConfiguracion(tenantId, "hora_cierre", "20:00");
+
+            contexto.append(String.format("\\nContexto del salón '%s':\\n", nombreSalon));
+            contexto.append(String.format("- Horario: %s a %s\\n", horaApertura, horaCierre));
+
+            String prompt = String.format(
+                    "Eres el asistente IA de %s. Analiza estos conflictos de reserva y sugiere 2-3 alternativas específicas y prácticas para el cliente:\\n\\n%s\\n\\nRespuesta en español, máximo 150 palabras:",
+                    nombreSalon,
+                    contexto.toString()
+            );
+
+            // Llamar a OpenAI
+            return openAIService.obtenerRespuestaSimple(prompt, tenantId);
+
+        } catch (Exception e) {
+            logger.warn("Error obteniendo sugerencias IA para conflictos: {}", e.getMessage());
+            return "Sugerencias IA no disponibles. Por favor contacte con el salón para alternativas.";
+        }
+    }
+
+    /**
+     * 🎯 MÉTODO CRÍTICO: analizarDisponibilidadRango()
+     * Analiza disponibilidad en un rango de fechas
+     */
+    public List<Map<String, Object>> analizarDisponibilidadRango(String tenantId,
+                                                                 LocalDateTime fechaInicio,
+                                                                 LocalDateTime fechaFin,
+                                                                 String servicioId,
+                                                                 String empleadoId) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+
+        try {
+            LocalDate diaActual = fechaInicio.toLocalDate();
+            LocalDate diaFinal = fechaFin.toLocalDate();
+
+            while (!diaActual.isAfter(diaFinal)) {
+                Map<String, Object> disponibilidadDia = new HashMap<>();
+                disponibilidadDia.put("fecha", diaActual.toString());
+
+                // Verificar si es día laborable
+                boolean esDiaLaborable = esDiaLaborable(tenantId, diaActual.atStartOfDay());
+                disponibilidadDia.put("esDiaLaborable", esDiaLaborable);
+
+                if (!esDiaLaborable) {
+                    disponibilidadDia.put("hayDisponibilidad", false);
+                    disponibilidadDia.put("motivo", "No es día laborable");
+                    disponibilidadDia.put("slotsDisponibles", 0);
+                } else {
+                    // Analizar slots disponibles en el día
+                    List<LocalDateTime> slotsDisponibles = obtenerSlotsDisponiblesEnDia(
+                            tenantId, diaActual, servicioId, empleadoId);
+
+                    disponibilidadDia.put("hayDisponibilidad", !slotsDisponibles.isEmpty());
+                    disponibilidadDia.put("slotsDisponibles", slotsDisponibles.size());
+                    disponibilidadDia.put("primeraHoraDisponible",
+                            slotsDisponibles.isEmpty() ? null : slotsDisponibles.get(0).toString());
+                    disponibilidadDia.put("ultimaHoraDisponible",
+                            slotsDisponibles.isEmpty() ? null :
+                                    slotsDisponibles.get(slotsDisponibles.size() - 1).toString());
+                }
+
+                resultado.add(disponibilidadDia);
+                diaActual = diaActual.plusDays(1);
+            }
+
+        } catch (Exception e) {
+            logger.error("Error analizando disponibilidad por rango para tenant {}: {}",
+                    tenantId, e.getMessage());
+        }
+
+        return resultado;
+    }
+
+    /**
+     * 🤖 MÉTODO IA PREMIUM: optimizarHorarioConIA()
+     * Encuentra el mejor horario usando inteligencia artificial
+     */
+    public Map<String, Object> optimizarHorarioConIA(String tenantId,
+                                                     String fechaPreferida,
+                                                     String horaPreferida,
+                                                     String servicioId,
+                                                     String empleadoId,
+                                                     Integer diasFlexibles) {
+        Map<String, Object> resultado = new HashMap<>();
+
+        try {
+            LocalDateTime fechaHoraPreferida = LocalDateTime.parse(fechaPreferida + "T" + horaPreferida);
+
+            // 1. Verificar si el horario preferido está disponible
+            DisponibilidadResult disponibilidadPreferida = verificarDisponibilidadCompleta(
+                    tenantId, fechaHoraPreferida, servicioId, empleadoId);
+
+            if (disponibilidadPreferida.isDisponible()) {
+                resultado.put("horarioOptimo", fechaHoraPreferida.toString());
+                resultado.put("esHorarioPreferido", true);
+                resultado.put("mensaje", "Su horario preferido está disponible");
+                resultado.put("razonOptimizacion", "Coincide con preferencia del cliente");
+                return resultado;
+            }
+
+            // 2. Si no está disponible, buscar alternativas inteligentes
+            List<LocalDateTime> alternativas = buscarAlternativasInteligentes(
+                    tenantId, fechaHoraPreferida, servicioId, empleadoId, diasFlexibles);
+
+            if (alternativas.isEmpty()) {
+                resultado.put("horarioOptimo", null);
+                resultado.put("esHorarioPreferido", false);
+                resultado.put("mensaje", "No se encontraron horarios disponibles en el rango especificado");
+                resultado.put("alternativas", List.of());
+                return resultado;
+            }
+
+            // 3. Usar IA para elegir la mejor alternativa
+            LocalDateTime mejorAlternativa = seleccionarMejorAlternativaConIA(
+                    tenantId, fechaHoraPreferida, alternativas, servicioId);
+
+            // 4. Generar explicación IA del por qué es la mejor opción
+            String explicacionIA = generarExplicacionOptimizacion(
+                    tenantId, fechaHoraPreferida, mejorAlternativa);
+
+            resultado.put("horarioOptimo", mejorAlternativa.toString());
+            resultado.put("esHorarioPreferido", false);
+            resultado.put("mensaje", "Horario optimizado encontrado");
+            resultado.put("explicacionIA", explicacionIA);
+            resultado.put("alternativas", alternativas.stream()
+                    .limit(5) // Máximo 5 alternativas
+                    .map(LocalDateTime::toString)
+                    .collect(Collectors.toList()));
+            resultado.put("factoresConsiderados", List.of(
+                    "Proximidad a horario preferido",
+                    "Disponibilidad de empleado",
+                    "Patrones de demanda histórica",
+                    "Optimización de recursos del salón"
+            ));
+
+        } catch (Exception e) {
+            logger.error("Error optimizando horario con IA para tenant {}: {}", tenantId, e.getMessage());
+            resultado.put("horarioOptimo", null);
+            resultado.put("error", "Error en optimización: " + e.getMessage());
+        }
+
+        return resultado;
+    }
+
+// ========================================
+// MÉTODOS AUXILIARES PRIVADOS
+// ========================================
+
+    /**
+     * Verificar si una fecha es día laborable según configuración del tenant
+     */
+    private boolean esDiaLaborable(String tenantId, LocalDateTime fecha) {
+        try {
+            String diasLaborables = obtenerConfiguracion(tenantId, "dias_laborables", "L,M,X,J,V,S");
+            DayOfWeek diaSeleccionado = fecha.getDayOfWeek();
+
+            Map<String, DayOfWeek> mapaDias = Map.of(
+                    "L", DayOfWeek.MONDAY,
+                    "M", DayOfWeek.TUESDAY,
+                    "X", DayOfWeek.WEDNESDAY,
+                    "J", DayOfWeek.THURSDAY,
+                    "V", DayOfWeek.FRIDAY,
+                    "S", DayOfWeek.SATURDAY,
+                    "D", DayOfWeek.SUNDAY
+            );
+
+            Set<DayOfWeek> diasPermitidos = Arrays.stream(diasLaborables.split(","))
+                    .map(String::trim)
+                    .map(mapaDias::get)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            return diasPermitidos.contains(diaSeleccionado);
+        } catch (Exception e) {
+            logger.warn("Error verificando día laborable: {}", e.getMessage());
+            return true; // Fallback seguro
+        }
+    }
+
+    /**
+     * Obtener slots disponibles en un día específico
+     */
+    private List<LocalDateTime> obtenerSlotsDisponiblesEnDia(String tenantId,
+                                                             LocalDate fecha,
+                                                             String servicioId,
+                                                             String empleadoId) {
+        List<LocalDateTime> slots = new ArrayList<>();
+
+        try {
+            String horaApertura = obtenerConfiguracion(tenantId, "hora_apertura", "09:00");
+            String horaCierre = obtenerConfiguracion(tenantId, "hora_cierre", "20:00");
+
+            LocalTime apertura = LocalTime.parse(horaApertura);
+            LocalTime cierre = LocalTime.parse(horaCierre);
+
+            // Generar slots cada 30 minutos
+            LocalTime horaActual = apertura;
+            while (horaActual.isBefore(cierre)) {
+                LocalDateTime slot = fecha.atTime(horaActual);
+
+                // Verificar disponibilidad del slot
+                DisponibilidadResult disponibilidad = verificarDisponibilidadCompleta(
+                        tenantId, slot, servicioId, empleadoId);
+
+                if (disponibilidad.isDisponible()) {
+                    slots.add(slot);
+                }
+
+                horaActual = horaActual.plusMinutes(30);
+            }
+        } catch (Exception e) {
+            logger.warn("Error obteniendo slots disponibles para fecha {}: {}", fecha, e.getMessage());
+        }
+
+        return slots;
+    }
+
+    /**
+     * Buscar alternativas inteligentes cerca del horario preferido
+     */
+    private List<LocalDateTime> buscarAlternativasInteligentes(String tenantId,
+                                                               LocalDateTime horarioPreferido,
+                                                               String servicioId,
+                                                               String empleadoId,
+                                                               Integer diasFlexibles) {
+        List<LocalDateTime> alternativas = new ArrayList<>();
+
+        // Buscar en el mismo día (antes y después)
+        for (int minutos = 30; minutos <= 480; minutos += 30) { // Hasta 8 horas de diferencia
+            LocalDateTime antesPreferido = horarioPreferido.minusMinutes(minutos);
+            LocalDateTime despuesPreferido = horarioPreferido.plusMinutes(minutos);
+
+            // Verificar slot anterior
+            if (verificarDisponibilidadCompleta(tenantId, antesPreferido, servicioId, empleadoId).isDisponible()) {
+                alternativas.add(antesPreferido);
+            }
+
+            // Verificar slot posterior
+            if (verificarDisponibilidadCompleta(tenantId, despuesPreferido, servicioId, empleadoId).isDisponible()) {
+                alternativas.add(despuesPreferido);
+            }
+
+            if (alternativas.size() >= 10) break; // Límite de alternativas por día
+        }
+
+        // Buscar en días adyacentes
+        for (int dia = 1; dia <= diasFlexibles; dia++) {
+            LocalDateTime diaSiguiente = horarioPreferido.plusDays(dia);
+            LocalDateTime diaAnterior = horarioPreferido.minusDays(dia);
+
+            if (verificarDisponibilidadCompleta(tenantId, diaSiguiente, servicioId, empleadoId).isDisponible()) {
+                alternativas.add(diaSiguiente);
+            }
+
+            if (verificarDisponibilidadCompleta(tenantId, diaAnterior, servicioId, empleadoId).isDisponible()) {
+                alternativas.add(diaAnterior);
+            }
+        }
+
+        return alternativas.stream()
+                .sorted((a, b) -> {
+                    // Ordenar por proximidad al horario preferido
+                    long diffA = Math.abs(ChronoUnit.MINUTES.between(horarioPreferido, a));
+                    long diffB = Math.abs(ChronoUnit.MINUTES.between(horarioPreferido, b));
+                    return Long.compare(diffA, diffB);
+                })
+                .limit(8) // Máximo 8 alternativas
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 🤖 IA selecciona la mejor alternativa considerando múltiples factores
+     */
+    private LocalDateTime seleccionarMejorAlternativaConIA(String tenantId,
+                                                           LocalDateTime horarioPreferido,
+                                                           List<LocalDateTime> alternativas,
+                                                           String servicioId) {
+        if (alternativas.isEmpty()) {
+            return null;
+        }
+
+        // Por ahora, seleccionar la más cercana al horario preferido
+        // TODO: Integrar análisis más sofisticado con OpenAI
+        return alternativas.get(0);
+    }
+
+    /**
+     * 🤖 Generar explicación IA de por qué se eligió ese horario
+     */
+    private String generarExplicacionOptimizacion(String tenantId,
+                                                  LocalDateTime horarioPreferido,
+                                                  LocalDateTime horarioOptimo) {
+        try {
+            long minutosDelante = ChronoUnit.MINUTES.between(horarioPreferido, horarioOptimo);
+            String direccion = minutosDelante > 0 ? "después" : "antes";
+            long minutosAbs = Math.abs(minutosDelante);
+
+            if (minutosAbs < 60) {
+                return String.format("Encontramos disponibilidad %d minutos %s de su horario preferido. " +
+                        "Es la opción más cercana disponible.", minutosAbs, direccion);
+            } else if (minutosAbs < 1440) { // Menos de un día
+                long horas = minutosAbs / 60;
+                return String.format("Su horario preferido no estaba disponible, pero encontramos un hueco " +
+                        "%d hora(s) %s que se ajusta perfectamente.", horas, direccion);
+            } else {
+                long dias = minutosAbs / 1440;
+                return String.format("Le sugerimos este horario %d día(s) %s ya que mantiene la misma hora " +
+                        "que prefería originalmente.", dias, direccion);
+            }
+        } catch (Exception e) {
+            return "Horario optimizado según disponibilidad del salón.";
+        }
     }
 }

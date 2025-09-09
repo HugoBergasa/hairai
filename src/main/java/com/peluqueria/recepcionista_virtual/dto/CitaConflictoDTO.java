@@ -1,46 +1,45 @@
 package com.peluqueria.recepcionista_virtual.dto;
 
-import com.peluqueria.recepcionista_virtual.model.Cita;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.util.Map;
 
 public class CitaConflictoDTO {
-    private String id;
-    private String clienteNombre;
-    private String clienteTelefono;
-    private String servicio;
-    private String fechaHora;
-    private String estado;
+    private String tipoConflicto;
+    private String titulo;
+    private String descripcion;
+    private LocalDateTime fechaHoraAfectada;
+    private Map<String, String> detallesAdicionales;
+    private String prioridad; // "BAJA", "MEDIA", "ALTA", "CRITICA"
 
-    // Constructor vacío
     public CitaConflictoDTO() {}
 
-    // Constructor desde entidad
-    public CitaConflictoDTO(Cita cita) {
-        this.id = cita.getId();
-        this.clienteNombre = cita.getCliente() != null ? cita.getCliente().getNombre() : "Cliente";
-        this.clienteTelefono = cita.getCliente() != null ? cita.getCliente().getTelefono() : "";
-        this.servicio = cita.getServicio() != null ? cita.getServicio().getNombre() : "Servicio";
-        this.fechaHora = cita.getFechaHora().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
-        this.estado = cita.getEstado().toString();
+    public CitaConflictoDTO(String tipoConflicto, String titulo, String descripcion,
+                            LocalDateTime fechaHoraAfectada, Map<String, String> detallesAdicionales,
+                            String prioridad) {
+        this.tipoConflicto = tipoConflicto;
+        this.titulo = titulo;
+        this.descripcion = descripcion;
+        this.fechaHoraAfectada = fechaHoraAfectada;
+        this.detallesAdicionales = detallesAdicionales;
+        this.prioridad = prioridad;
     }
 
-    // Getters y setters
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
+    // Getters y Setters
+    public String getTipoConflicto() { return tipoConflicto; }
+    public void setTipoConflicto(String tipoConflicto) { this.tipoConflicto = tipoConflicto; }
 
-    public String getClienteNombre() { return clienteNombre; }
-    public void setClienteNombre(String clienteNombre) { this.clienteNombre = clienteNombre; }
+    public String getTitulo() { return titulo; }
+    public void setTitulo(String titulo) { this.titulo = titulo; }
 
-    public String getClienteTelefono() { return clienteTelefono; }
-    public void setClienteTelefono(String clienteTelefono) { this.clienteTelefono = clienteTelefono; }
+    public String getDescripcion() { return descripcion; }
+    public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
 
-    public String getServicio() { return servicio; }
-    public void setServicio(String servicio) { this.servicio = servicio; }
+    public LocalDateTime getFechaHoraAfectada() { return fechaHoraAfectada; }
+    public void setFechaHoraAfectada(LocalDateTime fechaHoraAfectada) { this.fechaHoraAfectada = fechaHoraAfectada; }
 
-    public String getFechaHora() { return fechaHora; }
-    public void setFechaHora(String fechaHora) { this.fechaHora = fechaHora; }
+    public Map<String, String> getDetallesAdicionales() { return detallesAdicionales; }
+    public void setDetallesAdicionales(Map<String, String> detallesAdicionales) { this.detallesAdicionales = detallesAdicionales; }
 
-    public String getEstado() { return estado; }
-    public void setEstado(String estado) { this.estado = estado; }
+    public String getPrioridad() { return prioridad; }
+    public void setPrioridad(String prioridad) { this.prioridad = prioridad; }
 }

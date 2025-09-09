@@ -922,4 +922,26 @@ public class OpenAIService {
         return "Información procesada correctamente. " +
                 "Para asistencia adicional, no dude en contactarnos directamente.";
     }
+
+    public String obtenerRespuestaSimple(String prompt, String tenantId) {
+        try {
+            // Configurar el request para OpenAI
+            Map<String, Object> request = new HashMap<>();
+            request.put("model", "gpt-4");
+            request.put("messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+            ));
+            request.put("max_tokens", 150);
+            request.put("temperature", 0.7);
+
+            // Hacer la llamada a OpenAI API
+            // IMPLEMENTAR según tu configuración actual de OpenAI
+
+            return "Respuesta de OpenAI para el prompt"; // Placeholder
+
+        } catch (Exception e) {
+            logger.error("Error llamando a OpenAI: {}", e.getMessage());
+            return "Respuesta no disponible temporalmente";
+        }
+    }
 }

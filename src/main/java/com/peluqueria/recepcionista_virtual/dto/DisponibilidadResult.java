@@ -42,6 +42,8 @@ public class DisponibilidadResult {
     private String iconoTipo; // Para frontend
     private Boolean requiereConfirmacionUsuario = false;
 
+
+
     // ========================================
     // CONSTRUCTORES
     // ========================================
