@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface CitaRepository extends JpaRepository<Cita, String> {
 
@@ -143,7 +144,7 @@ public interface CitaRepository extends JpaRepository<Cita, String> {
 
     /**
      * NUEVA QUERY: Encontrar citas en rango de fechas
-     * CRITICA: Para verificar citas antes de cerrar fechas
+     * CRITICA: Para verificar citas antes de cerrar fechasfin
      */
     @Query("SELECT c FROM Cita c WHERE c.tenant.id = :tenantId " +
             "AND DATE(c.fechaHora) BETWEEN :fechaInicio AND :fechaFin " +
@@ -151,6 +152,108 @@ public interface CitaRepository extends JpaRepository<Cita, String> {
     List<Cita> findCitasEnRangoFechas(@Param("tenantId") String tenantId,
                                       @Param("fechaInicio") LocalDate fechaInicio,
                                       @Param("fechaFin") LocalDate fechaFin);
+
+    /**
+     * CRÍTICO: Detecta conflictos de empleados para validaciones
+     * Encuentra citas que se solapan con un horario específico
+     * 100% MULTITENANT: Filtra por tenant automáticamente a través de empleado
+     */
+    @Query("SELECT c FROM Cita c WHERE c.empleado.id = :empleadoId " +
+            "AND c.fechaHora < :fin " +
+            "AND FUNCTION('DATE_ADD', c.fechaHora, INTERVAL c.duracionMinutos MINUTE) > :inicio " +
+            "AND c.estado IN ('CONFIRMADA', 'COMPLETADA', 'EN_PROGRESO') " +
+            "AND (:excludeId IS NULL OR c.id != :excludeId)")
+    List<Cita> findCitasEmpleadoEnRango(@Param("empleadoId") String empleadoId,
+                                        @Param("inicio") LocalDateTime inicio,
+                                        @Param("fin") LocalDateTime fin,
+                                        @Param("excludeId") String excludeId);
+
+    /**
+     * CRÍTICO: Validación tenant-scope
+     * Verifica que una cita pertenece al tenant correcto antes de modificarla
+     */
+    @Query("SELECT c FROM Cita c WHERE c.id = :citaId AND c.tenant.id = :tenantId")
+    Optional<Cita> findCitaByIdAndTenant(@Param("citaId") String citaId,
+                                         @Param("tenantId") String tenantId);
+
+    /**
+     * CRÍTICO: Para cancelaciones masivas por HorarioEspecial
+     * Encuentra citas que serán afectadas por un cierre específico
+     */
+    @Query("SELECT c FROM Cita c WHERE c.tenant.id = :tenantId " +
+            "AND c.fechaHora >= :fechaInicio " +
+            "AND c.fechaHora <= :fechaFin " +
+            "AND c.estado IN ('PENDIENTE', 'CONFIRMADA') " +
+            "AND (:empleadoId IS NULL OR c.empleado.id = :empleadoId)")
+    List<Cita> findCitasParaCancelarPorCierre(@Param("tenantId") String tenantId,
+                                              @Param("fechaInicio") LocalDateTime fechaInicio,
+                                              @Param("fechaFin") LocalDateTime fechaFin,
+                                              @Param("empleadoId") String empleadoId);
+
+    /**
+     * CRÍTICO: Para restaurar citas cuando se elimina un cierre
+     * Encuentra citas canceladas por un HorarioEspecial específico (BD compatible)
+     */
+    @Query("SELECT c FROM Cita c WHERE c.tenant.id = :tenantId " +
+            "AND c.fechaHora >= :fechaInicio " +
+            "AND c.fechaHora <= :fechaFin " +
+            "AND c.estado = 'CANCELADA' " +
+            "AND c.notas LIKE CONCAT('%Cierre ID: ', :horarioEspecialId, '%')")
+    List<Cita> findCitasCanceladasPorCierre(@Param("tenantId") String tenantId,
+                                            @Param("fechaInicio") LocalDateTime fechaInicio,
+                                            @Param("fechaFin") LocalDateTime fechaFin,
+                                            @Param("horarioEspecialId") String horarioEspecialId);
+
+    /**
+     * CRÍTICO: Verificar disponibilidad específica de empleado en fecha
+     * Para validaciones de disponibilidad con precisión de minutos
+     */
+    @Query("SELECT c FROM Cita c WHERE c.empleado.id = :empleadoId " +
+            "AND DATE(c.fechaHora) = :fecha " +
+            "AND c.estado IN ('CONFIRMADA', 'COMPLETADA', 'EN_PROGRESO') " +
+            "ORDER BY c.fechaHora")
+    List<Cita> findCitasEmpleadoPorFecha(@Param("empleadoId") String empleadoId,
+                                         @Param("fecha") LocalDate fecha);
+
+    /**
+     * CRÍTICO: Para verificar citas de cliente en un rango (evitar duplicados)
+     * Detecta intentos de crear múltiples citas del mismo cliente
+     */
+    @Query("SELECT c FROM Cita c WHERE c.cliente.id = :clienteId " +
+            "AND c.fechaHora BETWEEN :inicio AND :fin " +
+            "AND c.estado = :estado")
+    List<Cita> findCitasClienteEnRango(@Param("clienteId") String clienteId,
+                                       @Param("inicio") LocalDateTime inicio,
+                                       @Param("fin") LocalDateTime fin,
+                                       @Param("estado") EstadoCita estado);
+
+    /**
+     * CRÍTICO: Contar citas activas en un slot específico de tiempo
+     * Para validar capacidad máxima del salón
+     */
+    @Query("SELECT COUNT(c) FROM Cita c WHERE c.tenant.id = :tenantId " +
+            "AND c.fechaHora = :fechaHora " +
+            "AND c.estado IN ('CONFIRMADA', 'EN_PROGRESO')")
+    Long countCitasActivasEnSlot(@Param("tenantId") String tenantId,
+                                 @Param("fechaHora") LocalDateTime fechaHora);
+
+    /**
+     * NUEVO: Verificar si empleado está activo y pertenece al tenant
+     * Para validaciones de seguridad antes de asignar citas
+     */
+    @Query("SELECT e FROM Empleado e WHERE e.id = :empleadoId " +
+            "AND e.tenant.id = :tenantId AND e.activo = true")
+    Optional<Empleado> findEmpleadoActivoByIdAndTenant(@Param("empleadoId") String empleadoId,
+                                                       @Param("tenantId") String tenantId);
+
+    /**
+     * NUEVO: Verificar si servicio está activo y pertenece al tenant
+     * Para validaciones de seguridad antes de crear citas
+     */
+    @Query("SELECT s FROM Servicio s WHERE s.id = :servicioId " +
+            "AND s.tenant.id = :tenantId AND s.activo = true")
+    Optional<Servicio> findServicioActivoByIdAndTenant(@Param("servicioId") String servicioId,
+                                                       @Param("tenantId") String tenantId);
 
 
 }

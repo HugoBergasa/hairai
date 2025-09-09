@@ -3,9 +3,7 @@ package com.peluqueria.recepcionista_virtual.service;
 import com.peluqueria.recepcionista_virtual.dto.DatosCita;
 import com.peluqueria.recepcionista_virtual.dto.DisponibilidadResult;
 import com.peluqueria.recepcionista_virtual.dto.OpenAIResponse;
-import com.peluqueria.recepcionista_virtual.model.HorarioEspecial;
-import com.peluqueria.recepcionista_virtual.model.Tenant;
-import com.peluqueria.recepcionista_virtual.model.Servicio;
+import com.peluqueria.recepcionista_virtual.model.*;
 import com.peluqueria.recepcionista_virtual.repository.TenantRepository;
 import com.peluqueria.recepcionista_virtual.repository.ServicioRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,8 +18,12 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class OpenAIService {
@@ -468,5 +470,456 @@ public class OpenAIService {
         } else {
             return fecha.toString();
         }
+    }
+    // AGREGAR ESTOS MÉTODOS AL OpenAIService.java EXISTENTE:
+
+// ========================================
+// MÉTODOS DE ANÁLISIS INTELIGENTE - AGREGAR
+// ========================================
+
+    /**
+     * CEREBRO OPENAI: Analizar conflictos de disponibilidad con sugerencias
+     */
+    public String analizarConflictoDisponibilidad(String tenantId, String errorMsg, LocalDateTime fechaHora) {
+        try {
+            Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+            if (tenant == null) return "Análisis no disponible";
+
+            if (apiKey == null || apiKey.equals("sk-dummy") || apiKey.startsWith("sk-proj-tu-clave")) {
+                logger.warn("OpenAI API Key no configurada - usando análisis mock");
+                return generarAnalisisMock(errorMsg, fechaHora);
+            }
+
+            String prompt = String.format(
+                    "Como experto en gestión de citas para %s, analiza este conflicto: '%s'. " +
+                            "Fecha solicitada: %s. " +
+                            "Proporciona: 1) Causa probable del conflicto, 2) 3 alternativas específicas de fecha/hora, " +
+                            "3) Recomendación para evitar futuros conflictos similares. " +
+                            "Responde en español, máximo 150 palabras, tono profesional pero empático.",
+                    tenant.getNombrePeluqueria(),
+                    errorMsg,
+                    fechaHora.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+            );
+
+            String respuesta = llamarOpenAI(prompt, "gpt-4", 0.3);
+            logger.debug("Análisis IA generado para conflicto: {}", respuesta.substring(0, Math.min(100, respuesta.length())));
+
+            return respuesta;
+
+        } catch (Exception e) {
+            logger.error("Error en análisis IA de conflicto: {}", e.getMessage());
+            return generarAnalisisMock(errorMsg, fechaHora);
+        }
+    }
+
+    /**
+     * CEREBRO OPENAI: Generar mensajes de error personalizados por tenant
+     */
+    public String generarMensajeError(String tenantId, String contextoError) {
+        try {
+            Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+            if (tenant == null) return "Error en operación";
+
+            if (apiKey == null || apiKey.equals("sk-dummy") || apiKey.startsWith("sk-proj-tu-clave")) {
+                return generarMensajeErrorMock(contextoError, tenant.getNombrePeluqueria());
+            }
+
+            String prompt = String.format(
+                    "Genera un mensaje de error profesional y empático para %s. " +
+                            "Contexto del error: %s. " +
+                            "Estilo: profesional pero cálido, en español. " +
+                            "Máximo 50 palabras. " +
+                            "Incluye una sugerencia constructiva si es posible.",
+                    tenant.getNombrePeluqueria(),
+                    traducirContextoError(contextoError)
+            );
+
+            String respuesta = llamarOpenAI(prompt, "gpt-4", 0.7);
+            logger.debug("Mensaje de error IA generado: {}", respuesta);
+
+            return respuesta;
+
+        } catch (Exception e) {
+            logger.error("Error generando mensaje con IA: {}", e.getMessage());
+            return generarMensajeErrorMock(contextoError, "el salón");
+        }
+    }
+
+    /**
+     * CEREBRO OPENAI: Sugerir horarios alternativos optimizados
+     */
+    public List<LocalDateTime> sugerirHorariosAlternativos(String tenantId, LocalDateTime fechaDeseada,
+                                                           String servicioId, String empleadoId) {
+        try {
+            Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+            if (tenant == null) return generarAlternativasBasicas(fechaDeseada);
+
+            if (apiKey == null || apiKey.equals("sk-dummy") || apiKey.startsWith("sk-proj-tu-clave")) {
+                return generarAlternativasBasicas(fechaDeseada);
+            }
+
+            String prompt = String.format(
+                    "Para %s, el cliente quería cita el %s pero no está disponible. " +
+                            "Horario del negocio: %s a %s, días %s. " +
+                            "Sugiere 3 horarios alternativos óptimos considerando: " +
+                            "1) Cercanía a fecha deseada, 2) Horarios populares (mañana y tarde), 3) Distribución de carga. " +
+                            "Responde solo las fechas en formato 'dd/MM/yyyy HH:mm', una por línea.",
+                    tenant.getNombrePeluqueria(),
+                    fechaDeseada.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
+                    tenant.getHoraApertura() != null ? tenant.getHoraApertura() : "09:00",
+                    tenant.getHoraCierre() != null ? tenant.getHoraCierre() : "20:00",
+                    tenant.getDiasLaborables() != null ? tenant.getDiasLaborables() : "L-S"
+            );
+
+            String respuestaIA = llamarOpenAI(prompt, "gpt-4", 0.3);
+            List<LocalDateTime> fechas = parsearFechasAlternativas(respuestaIA);
+
+            logger.debug("IA sugirió {} alternativas para {}", fechas.size(), fechaDeseada);
+
+            return fechas.isEmpty() ? generarAlternativasBasicas(fechaDeseada) : fechas;
+
+        } catch (Exception e) {
+            logger.error("Error generando alternativas con IA: {}", e.getMessage());
+            return generarAlternativasBasicas(fechaDeseada);
+        }
+    }
+
+    /**
+     * CEREBRO OPENAI: Análisis de patrones de citas para optimización
+     */
+    public String analizarPatronesCitas(String tenantId, List<Cita> citasRecientes) {
+        try {
+            if (citasRecientes.isEmpty()) {
+                return "Sin datos suficientes para análisis de patrones";
+            }
+
+            Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+            if (tenant == null) return "Análisis no disponible";
+
+            if (apiKey == null || apiKey.equals("sk-dummy") || apiKey.startsWith("sk-proj-tu-clave")) {
+                return generarAnalisisPatronesMock(citasRecientes.size());
+            }
+
+            // Crear resumen estadístico de las citas
+            String resumenEstadistico = crearResumenEstadistico(citasRecientes);
+
+            String prompt = String.format(
+                    "Analiza estos patrones de citas para %s: %s. " +
+                            "Identifica: 1) Horarios más demandados, 2) Servicios populares, " +
+                            "3) Días con mayor actividad, 4) Recomendaciones para optimizar agenda. " +
+                            "Responde en español, máximo 200 palabras, enfoque práctico.",
+                    tenant.getNombrePeluqueria(),
+                    resumenEstadistico
+            );
+
+            return llamarOpenAI(prompt, "gpt-4", 0.5);
+
+        } catch (Exception e) {
+            logger.error("Error analizando patrones con IA: {}", e.getMessage());
+            return "Error generando análisis de patrones";
+        }
+    }
+
+    /**
+     * CEREBRO OPENAI: Generar recomendaciones personalizadas por cliente
+     */
+    public String generarRecomendacionesCliente(String tenantId, Cliente cliente,
+                                                List<Cita> historialCitas) {
+        try {
+            Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+            if (tenant == null) return "Recomendaciones no disponibles";
+
+            if (apiKey == null || apiKey.equals("sk-dummy") || apiKey.startsWith("sk-proj-tu-clave")) {
+                return generarRecomendacionesMock(cliente.getNombre(), historialCitas.size());
+            }
+
+            String historialResumen = crearResumenHistorialCliente(historialCitas);
+
+            String prompt = String.format(
+                    "Para %s en %s, cliente: %s. Historial: %s. " +
+                            "Genera recomendaciones personalizadas de: 1) Servicios complementarios, " +
+                            "2) Frecuencia óptima de visitas, 3) Horarios que le convendrían mejor. " +
+                            "Tono amigable, máximo 120 palabras.",
+                    cliente.getNombre(),
+                    tenant.getNombrePeluqueria(),
+                    cliente.getNombre(),
+                    historialResumen
+            );
+
+            return llamarOpenAI(prompt, "gpt-4", 0.8);
+
+        } catch (Exception e) {
+            logger.error("Error generando recomendaciones cliente: {}", e.getMessage());
+            return "Gracias por su confianza. Consulte con nuestros profesionales para recomendaciones personalizadas.";
+        }
+    }
+
+// ========================================
+// MÉTODOS AUXILIARES PRIVADOS
+// ========================================
+
+    private String traducirContextoError(String contexto) {
+        Map<String, String> traducciones = Map.of(
+                "empleado_inactivo", "empleado no disponible o inactivo",
+                "empleado_no_autorizado", "empleado no autorizado para este servicio",
+                "servicio_no_disponible", "servicio no disponible en este momento",
+                "capacidad_excedida", "capacidad máxima del salón alcanzada",
+                "horario_invalido", "horario fuera del rango permitido",
+                "transicion_invalida", "cambio de estado no permitido",
+                "cliente_duplicado", "cliente ya tiene cita programada",
+                "fecha_retroactiva", "no se permiten citas en fechas pasadas"
+        );
+        return traducciones.getOrDefault(contexto, contexto);
+    }
+
+    private String generarAnalisisMock(String errorMsg, LocalDateTime fechaHora) {
+        StringBuilder analisis = new StringBuilder();
+
+        if (errorMsg.toLowerCase().contains("empleado")) {
+            analisis.append("El profesional seleccionado no está disponible en ese horario. ");
+            analisis.append("Alternativas: ").append(fechaHora.plusHours(2).format(DateTimeFormatter.ofPattern("HH:mm")));
+            analisis.append(" mismo día, o ").append(fechaHora.plusDays(1).format(DateTimeFormatter.ofPattern("dd/MM HH:mm")));
+            analisis.append(". Recomendación: Reserve con más anticipación.");
+        } else if (errorMsg.toLowerCase().contains("capacidad")) {
+            analisis.append("Horario de alta demanda. ");
+            analisis.append("Alternativas: ").append(fechaHora.minusHours(1).format(DateTimeFormatter.ofPattern("HH:mm")));
+            analisis.append(" o ").append(fechaHora.plusHours(3).format(DateTimeFormatter.ofPattern("HH:mm")));
+            analisis.append(" mismo día. Recomendación: Horarios de mañana suelen tener más disponibilidad.");
+        } else {
+            analisis.append("Horario no disponible. ");
+            analisis.append("Alternativas: ").append(fechaHora.plusDays(1).format(DateTimeFormatter.ofPattern("dd/MM")));
+            analisis.append(" a la misma hora, o horarios de mañana el mismo día.");
+        }
+
+        return analisis.toString();
+    }
+
+    private String generarMensajeErrorMock(String contexto, String nombreSalon) {
+        Map<String, String> mensajesMock = Map.of(
+                "empleado_inactivo", "El profesional seleccionado no está disponible. ¿Le ayudamos con otro horario?",
+                "empleado_no_autorizado", "Este profesional no realiza el servicio solicitado. Consulte nuestras especializaciones.",
+                "capacidad_excedida", "Horario muy solicitado. ¿Qué tal una hora antes o después?",
+                "horario_invalido", "Horario fuera de nuestro servicio. Atendemos de 9:00 a 20:00.",
+                "transicion_invalida", "No es posible realizar ese cambio. Consulte con recepción."
+        );
+
+        return mensajesMock.getOrDefault(contexto,
+                "Inconveniente temporal en " + nombreSalon + ". ¿Podemos ofrecerle una alternativa?");
+    }
+
+    private List<LocalDateTime> parsearFechasAlternativas(String respuestaIA) {
+        List<LocalDateTime> fechas = new ArrayList<>();
+
+        try {
+            String[] lineas = respuestaIA.split("\n");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+
+            for (String linea : lineas) {
+                linea = linea.trim();
+                if (linea.matches("\\d{2}/\\d{2}/\\d{4} \\d{2}:\\d{2}")) {
+                    try {
+                        LocalDateTime fecha = LocalDateTime.parse(linea, formatter);
+                        if (fecha.isAfter(LocalDateTime.now())) {
+                            fechas.add(fecha);
+                        }
+                    } catch (Exception e) {
+                        logger.debug("Error parseando fecha alternativa: {}", linea);
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            logger.warn("Error parseando respuesta IA para fechas alternativas: {}", e.getMessage());
+        }
+
+        return fechas;
+    }
+
+    private List<LocalDateTime> generarAlternativasBasicas(LocalDateTime fechaOriginal) {
+        List<LocalDateTime> alternativas = new ArrayList<>();
+        LocalDateTime base = fechaOriginal;
+
+        // Alternativa 1: 2 horas después el mismo día
+        alternativas.add(base.plusHours(2));
+
+        // Alternativa 2: Día siguiente a la misma hora
+        alternativas.add(base.plusDays(1));
+
+        // Alternativa 3: 2 días después a las 10:00
+        alternativas.add(base.plusDays(2).withHour(10).withMinute(0));
+
+        return alternativas;
+    }
+
+    private String crearResumenEstadistico(List<Cita> citas) {
+        Map<String, Integer> servicios = new HashMap<>();
+        Map<Integer, Integer> horas = new HashMap<>();
+        Map<String, Integer> dias = new HashMap<>();
+
+        for (Cita cita : citas) {
+            // Contar servicios
+            String servicio = cita.getServicio() != null ? cita.getServicio().getNombre() : "Sin servicio";
+            servicios.put(servicio, servicios.getOrDefault(servicio, 0) + 1);
+
+            // Contar horas
+            int hora = cita.getFechaHora().getHour();
+            horas.put(hora, horas.getOrDefault(hora, 0) + 1);
+
+            // Contar días de semana
+            String dia = cita.getFechaHora().getDayOfWeek().toString();
+            dias.put(dia, dias.getOrDefault(dia, 0) + 1);
+        }
+
+        return String.format("Total citas: %d. Servicios populares: %s. Horas pico: %s. Días activos: %s",
+                citas.size(),
+                servicios.entrySet().stream().limit(3).map(e -> e.getKey() + "(" + e.getValue() + ")")
+                        .collect(Collectors.joining(", ")),
+                horas.entrySet().stream().limit(3).map(e -> e.getKey() + ":00(" + e.getValue() + ")")
+                        .collect(Collectors.joining(", ")),
+                dias.entrySet().stream().limit(3).map(e -> e.getKey() + "(" + e.getValue() + ")")
+                        .collect(Collectors.joining(", "))
+        );
+    }
+
+    private String crearResumenHistorialCliente(List<Cita> historial) {
+        if (historial.isEmpty()) return "Cliente nuevo";
+
+        Map<String, Integer> serviciosCliente = new HashMap<>();
+        for (Cita cita : historial) {
+            String servicio = cita.getServicio() != null ? cita.getServicio().getNombre() : "Sin servicio";
+            serviciosCliente.put(servicio, serviciosCliente.getOrDefault(servicio, 0) + 1);
+        }
+
+        String servicioFavorito = serviciosCliente.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse("Ninguno");
+
+        return String.format("%d visitas, servicio preferido: %s",
+                historial.size(), servicioFavorito);
+    }
+
+    private String generarAnalisisPatronesMock(int numCitas) {
+        return String.format("Análisis de %d citas: Los horarios de 10:00-12:00 y 16:00-18:00 " +
+                        "son los más demandados. Los servicios de corte y color representan el 70%% de reservas. " +
+                        "Recomendación: Ampliar disponibilidad en horarios pico y considerar servicios complementarios.",
+                numCitas);
+    }
+
+    private String generarRecomendacionesMock(String nombreCliente, int numVisitas) {
+        if (numVisitas == 0) {
+            return String.format("Bienvenido/a %s. Le recomendamos comenzar con nuestro servicio signature " +
+                    "y agendar su próxima cita en 4-6 semanas para mantener el look perfecto.", nombreCliente);
+        } else {
+            return String.format("Gracias por su confianza, %s. Basado en su historial de %d visitas, " +
+                            "le sugerimos complementar con tratamientos nutritivos y mantener frecuencia mensual.",
+                    nombreCliente, numVisitas);
+        }
+    }
+
+    // AGREGAR ESTE MÉTODO AL FINAL DE OpenAIService.java (antes del último })
+
+    /**
+     * Método principal para llamar a la API de OpenAI
+     *
+     * @param prompt El prompt a enviar
+     * @param model El modelo a usar (ej: "gpt-4", "gpt-3.5-turbo")
+     * @param temperature Temperatura para creatividad (0.0 - 1.0)
+     * @return Respuesta de OpenAI o mensaje de fallback
+     */
+    private String llamarOpenAI(String prompt, String model, double temperature) {
+        try {
+            // Validar API Key
+            if (apiKey == null || apiKey.equals("sk-dummy") || apiKey.startsWith("sk-proj-tu-clave")) {
+                logger.warn("OpenAI API Key no configurada - usando respuesta fallback");
+                return generarRespuestaFallback(prompt);
+            }
+
+            // Configurar headers
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(apiKey);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            // Construir request body
+            Map<String, Object> requestBody = Map.of(
+                    "model", model,
+                    "messages", List.of(
+                            Map.of("role", "user", "content", prompt)
+                    ),
+                    "temperature", temperature,
+                    "max_tokens", 500
+            );
+
+            logger.debug("Enviando request a OpenAI - Modelo: {}, Temperature: {}", model, temperature);
+
+            // Hacer llamada a OpenAI
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    "https://api.openai.com/v1/chat/completions",
+                    HttpMethod.POST,
+                    new HttpEntity<>(requestBody, headers),
+                    Map.class
+            );
+
+            // Procesar respuesta
+            Map<String, Object> responseBody = response.getBody();
+            if (responseBody == null || !responseBody.containsKey("choices")) {
+                logger.error("Respuesta de OpenAI inválida: {}", responseBody);
+                return generarRespuestaFallback(prompt);
+            }
+
+            List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
+            if (choices.isEmpty()) {
+                logger.error("No hay respuestas de OpenAI");
+                return generarRespuestaFallback(prompt);
+            }
+
+            Map<String, Object> choice = choices.get(0);
+            Map<String, Object> message = (Map<String, Object>) choice.get("message");
+            String content = (String) message.get("content");
+
+            logger.debug("Respuesta de OpenAI obtenida exitosamente");
+            return content.trim();
+
+        } catch (Exception e) {
+            logger.error("Error llamando a OpenAI: {}", e.getMessage(), e);
+            return generarRespuestaFallback(prompt);
+        }
+    }
+
+    /**
+     * Generar respuesta fallback cuando OpenAI no está disponible
+     */
+    private String generarRespuestaFallback(String prompt) {
+        // Análisis básico del prompt para dar respuesta apropiada
+        String promptLower = prompt.toLowerCase();
+
+        if (promptLower.contains("conflicto") || promptLower.contains("disponibilidad")) {
+            return "El horario solicitado presenta conflictos. " +
+                    "Alternativas sugeridas: pruebe 1-2 horas antes o después, " +
+                    "o el mismo horario al día siguiente. " +
+                    "Recomendación: reserve con más anticipación para mayor disponibilidad.";
+        }
+
+        if (promptLower.contains("error") || promptLower.contains("problema")) {
+            return "Se ha producido un inconveniente técnico temporal. " +
+                    "Le sugerimos intentar nuevamente en unos minutos " +
+                    "o contactar directamente con el establecimiento.";
+        }
+
+        if (promptLower.contains("cancelacion") || promptLower.contains("cancelar")) {
+            return "Su cita ha sido procesada. " +
+                    "Para más información o cambios adicionales, " +
+                    "puede contactar directamente con nosotros.";
+        }
+
+        if (promptLower.contains("cliente") || promptLower.contains("recomendacion")) {
+            return "Gracias por su confianza en nuestros servicios. " +
+                    "Para recomendaciones personalizadas, " +
+                    "consulte con nuestros profesionales durante su próxima visita.";
+        }
+
+        // Fallback genérico
+        return "Información procesada correctamente. " +
+                "Para asistencia adicional, no dude en contactarnos directamente.";
     }
 }
